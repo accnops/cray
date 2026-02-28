@@ -23,7 +23,8 @@ export function createSchema(db: Database): void {
       total_output_tokens INTEGER DEFAULT 0,
       total_cache_read_tokens INTEGER DEFAULT 0,
       total_cache_write_tokens INTEGER DEFAULT 0,
-      estimated_cost_usd REAL DEFAULT 0
+      estimated_cost_usd REAL DEFAULT 0,
+      first_message TEXT
     )
   `);
 

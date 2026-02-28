@@ -35,8 +35,8 @@ export class Repository {
       INSERT OR REPLACE INTO sessions (
         session_id, project_path, start_ts, end_ts, duration_ms,
         total_input_tokens, total_output_tokens, total_cache_read_tokens,
-        total_cache_write_tokens, estimated_cost_usd
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        total_cache_write_tokens, estimated_cost_usd, first_message
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       session.sessionId,
@@ -48,7 +48,8 @@ export class Repository {
       session.totalOutputTokens,
       session.totalCacheReadTokens,
       session.totalCacheWriteTokens,
-      session.estimatedCostUsd
+      session.estimatedCostUsd,
+      session.firstMessage
     );
   }
 
@@ -57,7 +58,7 @@ export class Repository {
       SELECT
         session_id, project_path, start_ts, end_ts, duration_ms,
         total_input_tokens, total_output_tokens, total_cache_read_tokens,
-        total_cache_write_tokens, estimated_cost_usd
+        total_cache_write_tokens, estimated_cost_usd, first_message
       FROM sessions
       WHERE session_id = ?
     `);
@@ -71,7 +72,7 @@ export class Repository {
       SELECT
         session_id, project_path, start_ts, end_ts, duration_ms,
         total_input_tokens, total_output_tokens, total_cache_read_tokens,
-        total_cache_write_tokens, estimated_cost_usd
+        total_cache_write_tokens, estimated_cost_usd, first_message
       FROM sessions
       ORDER BY start_ts DESC
     `);
@@ -91,6 +92,7 @@ export class Repository {
       totalCacheReadTokens: row.total_cache_read_tokens as number,
       totalCacheWriteTokens: row.total_cache_write_tokens as number,
       estimatedCostUsd: row.estimated_cost_usd as number,
+      firstMessage: (row.first_message as string) ?? null,
     };
   }
 

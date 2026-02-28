@@ -26,6 +26,7 @@ export interface Session {
   totalCacheReadTokens: number;
   totalCacheWriteTokens: number;
   estimatedCostUsd: number;
+  firstMessage: string | null;
 }
 
 export interface Agent {
