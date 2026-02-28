@@ -57,6 +57,30 @@ export async function ingestSession(
     totalCacheWrite
   );
 
+  // Find first user message
+  let firstMessage: string | null = null;
+  for (const event of events) {
+    if (event.normType === "user_message") {
+      try {
+        const raw = JSON.parse(event.rawJson);
+        if (raw.message?.content) {
+          const content = raw.message.content;
+          if (typeof content === "string") {
+            firstMessage = content.slice(0, 100);
+          } else if (Array.isArray(content)) {
+            const textPart = content.find((p: any) => p.type === "text");
+            if (textPart?.text) {
+              firstMessage = textPart.text.slice(0, 100);
+            }
+          }
+          break;
+        }
+      } catch {
+        // Skip malformed JSON
+      }
+    }
+  }
+
   const session: Session = {
     sessionId: discovered.sessionId,
     projectPath: discovered.projectPath,
@@ -68,6 +92,7 @@ export async function ingestSession(
     totalCacheReadTokens: totalCacheRead,
     totalCacheWriteTokens: totalCacheWrite,
     estimatedCostUsd,
+    firstMessage,
   };
 
   repo.insertSession(session);
