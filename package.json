@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm -r dev",
-    "build": "pnpm -r build",
+    "build": "bun scripts/build.ts",
+    "build:packages": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "biome check .",
     "format": "biome format --write ."
