@@ -387,6 +387,9 @@ export class Repository {
       cache_read_tokens: number;
     }>;
 
+    // Bucket tokens by time interval
+    const bucketedTokens = this.bucketTokensByTime(tokensRows);
+
     // Time breakdown - LLM spans
     const llmStmt = this.db.prepare(`
       SELECT
@@ -449,14 +452,58 @@ export class Repository {
         outputTokens: totalsRow.output_tokens ?? 0,
         cacheReadTokens: totalsRow.cache_read_tokens ?? 0,
       },
-      tokensOverTime: tokensRows.map((r) => ({
-        ts: r.ts,
-        inputTokens: r.input_tokens,
-        outputTokens: r.output_tokens,
-        cacheReadTokens: r.cache_read_tokens,
-      })),
+      tokensOverTime: bucketedTokens,
       timeBreakdown,
     };
+  }
+
+  private bucketTokensByTime(
+    rows: Array<{ ts: number; input_tokens: number; output_tokens: number; cache_read_tokens: number }>
+  ): Array<{ ts: number; inputTokens: number; outputTokens: number; cacheReadTokens: number }> {
+    if (rows.length === 0) return [];
+
+    // Find time range
+    const minTs = rows[0].ts;
+    const maxTs = rows[rows.length - 1].ts;
+    const rangeMs = maxTs - minTs;
+
+    // Choose bucket size based on range
+    // < 1 hour: 1 minute buckets
+    // < 1 day: 5 minute buckets
+    // < 1 week: 1 hour buckets
+    // >= 1 week: 1 day buckets
+    let bucketMs: number;
+    if (rangeMs < 60 * 60 * 1000) {
+      bucketMs = 60 * 1000; // 1 minute
+    } else if (rangeMs < 24 * 60 * 60 * 1000) {
+      bucketMs = 5 * 60 * 1000; // 5 minutes
+    } else if (rangeMs < 7 * 24 * 60 * 60 * 1000) {
+      bucketMs = 60 * 60 * 1000; // 1 hour
+    } else {
+      bucketMs = 24 * 60 * 60 * 1000; // 1 day
+    }
+
+    // Group into buckets
+    const buckets = new Map<number, { input: number; output: number; cache: number }>();
+
+    for (const row of rows) {
+      const bucketTs = Math.floor(row.ts / bucketMs) * bucketMs;
+      const existing = buckets.get(bucketTs) ?? { input: 0, output: 0, cache: 0 };
+      existing.input += row.input_tokens;
+      existing.output += row.output_tokens;
+      existing.cache += row.cache_read_tokens;
+      buckets.set(bucketTs, existing);
+    }
+
+    // Convert to array sorted by timestamp
+    return Array.from(buckets.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([ts, data]) => ({
+        ts,
+        inputTokens: data.input,
+        outputTokens: data.output,
+        cacheReadTokens: data.cache,
+      }));
   }
 
   getToolStatsMulti(sessionIds: string[]): ToolStats[] {
