@@ -49,6 +49,9 @@ importers:
 
   packages/parser:
     dependencies:
+      '@ccray/db':
+        specifier: workspace:*
+        version: link:../db
       '@ccray/shared':
         specifier: workspace:*
         version: link:../shared
