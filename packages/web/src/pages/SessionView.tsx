@@ -1,6 +1,7 @@
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import type { Session, Span } from "@ccray/shared";
 import { useApi } from "../hooks/useApi";
+import { ToolProfiler } from "../components/ToolProfiler";
 
 export function SessionView() {
   const { id } = useParams<{ id: string }>();
@@ -17,17 +18,45 @@ export function SessionView() {
 
   return (
     <div className="session-view">
-      <h2>Session: {session.sessionId.slice(0, 8)}...</h2>
+      <nav className="breadcrumb">
+        <Link to="/">Sessions</Link> / {session.sessionId.slice(0, 8)}...
+      </nav>
+
+      <h2>Session Details</h2>
       <div className="session-meta">
-        <span>Duration: {(session.durationMs / 1000).toFixed(1)}s</span>
-        <span>Cost: ${session.estimatedCostUsd.toFixed(4)}</span>
-        <span>Tokens: {session.totalInputTokens.toLocaleString()} in / {session.totalOutputTokens.toLocaleString()} out</span>
+        <div className="meta-item">
+          <span className="label">Duration</span>
+          <span className="value">{(session.durationMs / 1000).toFixed(1)}s</span>
+        </div>
+        <div className="meta-item">
+          <span className="label">Cost</span>
+          <span className="value">${session.estimatedCostUsd.toFixed(4)}</span>
+        </div>
+        <div className="meta-item">
+          <span className="label">Input Tokens</span>
+          <span className="value">{session.totalInputTokens.toLocaleString()}</span>
+        </div>
+        <div className="meta-item">
+          <span className="label">Output Tokens</span>
+          <span className="value">{session.totalOutputTokens.toLocaleString()}</span>
+        </div>
+        <div className="meta-item">
+          <span className="label">Cache Read</span>
+          <span className="value">{session.totalCacheReadTokens.toLocaleString()}</span>
+        </div>
       </div>
 
-      <h3>Spans ({spans?.length ?? 0})</h3>
-      <div className="timeline-placeholder">
-        Timeline visualization will be implemented with PixiJS
-      </div>
+      <section className="section">
+        <h3>Timeline ({spans?.length ?? 0} spans)</h3>
+        <div className="timeline-placeholder">
+          Timeline visualization will be implemented with PixiJS
+        </div>
+      </section>
+
+      <section className="section">
+        <h3>Tool Profiler</h3>
+        <ToolProfiler sessionId={session.sessionId} />
+      </section>
     </div>
   );
 }
