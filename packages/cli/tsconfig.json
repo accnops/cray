@@ -6,6 +6,10 @@
     "types": ["bun-types"]
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts"],
-  "references": [{ "path": "../shared" }]
+  "references": [
+    { "path": "../shared" },
+    { "path": "../parser" },
+    { "path": "../db" },
+    { "path": "../server" }
+  ]
 }

@@ -1,0 +1,23 @@
+{
+  "name": "@ccray/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "ccray": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@ccray/shared": "workspace:*",
+    "@ccray/parser": "workspace:*",
+    "@ccray/db": "workspace:*",
+    "@ccray/server": "workspace:*",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "bun-types": "^1.1.0"
+  }
+}
