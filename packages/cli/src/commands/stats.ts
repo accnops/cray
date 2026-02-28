@@ -1,8 +1,9 @@
 import { Database } from "bun:sqlite";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, dirname, basename } from "node:path";
+import { stat } from "node:fs/promises";
 import { createSchema, Repository } from "@ccray/db";
-import { discoverSessions, readJsonlLines, normalizeEvent } from "@ccray/parser";
+import { discoverSessions, readJsonlLines, normalizeEvent, DiscoveredSession } from "@ccray/parser";
 import { estimateCost } from "@ccray/shared";
 
 export interface StatsOptions {
@@ -20,7 +21,23 @@ export async function statsCommand(
   createSchema(db);
   const repo = new Repository(db);
 
-  const sessions = await discoverSessions(targetPath);
+  let sessions: DiscoveredSession[];
+
+  // Check if path is a file or directory
+  const pathStat = await stat(targetPath);
+  if (pathStat.isFile() && targetPath.endsWith(".jsonl")) {
+    // Direct file path provided
+    const sessionId = basename(targetPath).replace(".jsonl", "");
+    sessions = [{
+      sessionId,
+      mainPath: targetPath,
+      subagentPaths: [],
+      projectPath: dirname(targetPath),
+    }];
+  } else {
+    // Directory path provided
+    sessions = await discoverSessions(targetPath);
+  }
 
   if (sessions.length === 0) {
     console.log("No sessions found.");

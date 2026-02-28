@@ -32,7 +32,7 @@ export class Repository {
 
   insertSession(session: Session): void {
     const stmt = this.db.prepare(`
-      INSERT INTO sessions (
+      INSERT OR REPLACE INTO sessions (
         session_id, project_path, start_ts, end_ts, duration_ms,
         total_input_tokens, total_output_tokens, total_cache_read_tokens,
         total_cache_write_tokens, estimated_cost_usd
@@ -96,7 +96,7 @@ export class Repository {
 
   insertAgent(agent: Agent): void {
     const stmt = this.db.prepare(`
-      INSERT INTO agents (
+      INSERT OR REPLACE INTO agents (
         agent_id, session_id, parent_agent_id, kind, transcript_path,
         start_ts, end_ts, link_confidence, total_input_tokens,
         total_output_tokens, estimated_cost_usd
@@ -149,7 +149,7 @@ export class Repository {
 
   insertSpan(span: Span): void {
     const stmt = this.db.prepare(`
-      INSERT INTO spans (
+      INSERT OR REPLACE INTO spans (
         span_id, session_id, agent_id, parent_span_id, span_type,
         start_ts, end_ts, duration_ms, status, input_tokens,
         output_tokens, cache_read_tokens, cache_write_tokens, model
@@ -208,7 +208,7 @@ export class Repository {
 
   insertToolCall(toolCall: ToolCall): void {
     const stmt = this.db.prepare(`
-      INSERT INTO tool_calls (
+      INSERT OR REPLACE INTO tool_calls (
         tool_call_id, span_id, session_id, agent_id, tool_family,
         tool_name, mcp_server, status, error_type, input_bytes, output_bytes
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -230,7 +230,7 @@ export class Repository {
 
   insertEvent(event: RawEvent): void {
     const stmt = this.db.prepare(`
-      INSERT INTO events (
+      INSERT OR REPLACE INTO events (
         event_id, session_id, agent_id, ts, raw_type,
         norm_type, raw_line_no, raw_json
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
