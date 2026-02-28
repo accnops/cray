@@ -34,7 +34,8 @@ export function TimeBreakdown({ data }: Props) {
       axisPointer: { type: "shadow" },
       formatter: (params: any) => {
         const item = params[0];
-        const d = chartData[item.dataIndex];
+        // Data is reversed for display, so reverse the index lookup
+        const d = chartData[chartData.length - 1 - item.dataIndex];
         return `<strong>${d.name}</strong><br/>
           Calls: ${d.calls}<br/>
           Total: ${formatMs(d.totalMs)}<br/>

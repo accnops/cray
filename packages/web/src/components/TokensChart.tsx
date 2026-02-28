@@ -29,7 +29,7 @@ export function TokensChart({ data }: Props) {
       },
     },
     legend: {
-      data: ["Input", "Output", "Cache Read"],
+      data: ["Input", "Output"],
       textStyle: { color: "#8b949e" },
     },
     grid: {
@@ -62,14 +62,6 @@ export function TokensChart({ data }: Props) {
         type: "line",
         data: data.map((d) => [d.ts, d.outputTokens]),
         itemStyle: { color: "#3fb950" },
-        smooth: true,
-      },
-      {
-        name: "Cache Read",
-        type: "line",
-        data: data.map((d) => [d.ts, d.cacheReadTokens]),
-        itemStyle: { color: "#d29922" },
-        lineStyle: { type: "dashed" },
         smooth: true,
       },
     ],
