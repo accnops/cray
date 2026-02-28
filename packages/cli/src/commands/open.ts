@@ -1,10 +1,30 @@
 import { Database } from "bun:sqlite";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { createSchema, Repository } from "@ccray/db";
 import { createApp } from "@ccray/server";
 import { ingestAll } from "@ccray/parser";
+
+async function findWebRoot(): Promise<string | undefined> {
+  // Try relative to current working directory (development)
+  const devPath = join(process.cwd(), "packages", "web", "dist");
+  const devFile = Bun.file(join(devPath, "index.html"));
+  if (await devFile.exists()) {
+    return devPath;
+  }
+
+  // Try relative to executable (compiled binary)
+  const exePath = process.execPath;
+  const exeDir = dirname(exePath);
+  const exeWebPath = join(exeDir, "web");
+  const exeFile = Bun.file(join(exeWebPath, "index.html"));
+  if (await exeFile.exists()) {
+    return exeWebPath;
+  }
+
+  return undefined;
+}
 
 export interface OpenOptions {
   port?: number;
@@ -40,7 +60,15 @@ export async function openCommand(
   console.log(`\nIngested ${sessions.length} session(s)`);
 
   const repo = new Repository(db);
-  const app = createApp(repo);
+  const webRoot = await findWebRoot();
+
+  if (webRoot) {
+    console.log(`Serving web UI from ${webRoot}`);
+  } else {
+    console.log("Warning: Web UI not found. API-only mode.");
+  }
+
+  const app = createApp(repo, { webRoot });
 
   console.log(`\nStarting server on http://127.0.0.1:${port}`);
 

@@ -14,7 +14,14 @@ async function build() {
   console.log("\nCompiling standalone binary...");
   await $`bun build packages/cli/src/index.ts --compile --outfile dist/ccray`;
 
-  console.log("\nBuild complete! Binary at: dist/ccray");
+  // Copy web assets alongside binary
+  console.log("\nCopying web assets...");
+  await $`rm -rf dist/web`;
+  await $`cp -r packages/web/dist dist/web`;
+
+  console.log("\nBuild complete!");
+  console.log("  Binary: dist/ccray");
+  console.log("  Web UI: dist/web/");
 }
 
 build().catch(console.error);

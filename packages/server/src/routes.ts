@@ -1,11 +1,16 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { serveStatic } from "hono/bun";
 import type { Repository } from "@ccray/db";
 
-export function createApp(repo: Repository) {
+export interface AppOptions {
+  webRoot?: string;
+}
+
+export function createApp(repo: Repository, options: AppOptions = {}) {
   const app = new Hono();
 
-  app.use("*", cors());
+  app.use("/api/*", cors());
 
   // Sessions
   app.get("/api/sessions", (c) => {
@@ -35,6 +40,21 @@ export function createApp(repo: Repository) {
     const stats = repo.getToolStats(c.req.param("id"));
     return c.json(stats);
   });
+
+  // Serve static files from web dist
+  if (options.webRoot) {
+    app.use("/*", serveStatic({ root: options.webRoot }));
+
+    // SPA fallback - serve index.html for client-side routes
+    app.get("*", async (c) => {
+      const indexPath = `${options.webRoot}/index.html`;
+      const file = Bun.file(indexPath);
+      if (await file.exists()) {
+        return c.html(await file.text());
+      }
+      return c.text("Not Found", 404);
+    });
+  }
 
   return app;
 }
