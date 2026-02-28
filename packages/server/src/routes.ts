@@ -41,6 +41,17 @@ export function createApp(repo: Repository, options: AppOptions = {}) {
     return c.json(stats);
   });
 
+  app.get("/api/aggregate", (c) => {
+    const sessionIdsParam = c.req.query("sessions");
+    const sessionIds = sessionIdsParam ? sessionIdsParam.split(",") : [];
+
+    // If no sessions specified, use all
+    const ids = sessionIds.length > 0 ? sessionIds : repo.listSessions().map(s => s.sessionId);
+
+    const data = repo.getAggregate(ids);
+    return c.json(data);
+  });
+
   // Serve static files from web dist
   if (options.webRoot) {
     app.use("/*", serveStatic({ root: options.webRoot }));

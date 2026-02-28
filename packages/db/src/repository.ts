@@ -23,6 +23,30 @@ export interface ToolStats {
   totalOutputBytes: number;
 }
 
+export interface AggregateData {
+  totals: {
+    cost: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+  };
+  tokensOverTime: Array<{
+    ts: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+  }>;
+  timeBreakdown: Array<{
+    name: string;
+    type: "llm" | "builtin" | "mcp";
+    calls: number;
+    totalMs: number;
+    avgMs: number;
+    p95Ms: number;
+    errors: number;
+  }>;
+}
+
 export class Repository {
   private db: Database;
 
@@ -323,5 +347,182 @@ export class Repository {
     if (sortedArr.length === 0) return 0;
     const index = Math.ceil((p / 100) * sortedArr.length) - 1;
     return sortedArr[Math.max(0, index)];
+  }
+
+  getAggregate(sessionIds: string[]): AggregateData {
+    if (sessionIds.length === 0) {
+      return { totals: { cost: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 }, tokensOverTime: [], timeBreakdown: [] };
+    }
+
+    const placeholders = sessionIds.map(() => "?").join(",");
+
+    // Totals
+    const totalsStmt = this.db.prepare(`
+      SELECT
+        SUM(estimated_cost_usd) as cost,
+        SUM(total_input_tokens) as input_tokens,
+        SUM(total_output_tokens) as output_tokens,
+        SUM(total_cache_read_tokens) as cache_read_tokens
+      FROM sessions
+      WHERE session_id IN (${placeholders})
+    `);
+    const totalsRow = totalsStmt.get(...sessionIds) as Record<string, number>;
+
+    // Tokens over time (from spans with LLM activity)
+    const tokensStmt = this.db.prepare(`
+      SELECT
+        start_ts as ts,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens
+      FROM spans
+      WHERE session_id IN (${placeholders})
+        AND (input_tokens > 0 OR output_tokens > 0)
+      ORDER BY start_ts ASC
+    `);
+    const tokensRows = tokensStmt.all(...sessionIds) as Array<{
+      ts: number;
+      input_tokens: number;
+      output_tokens: number;
+      cache_read_tokens: number;
+    }>;
+
+    // Time breakdown - LLM spans
+    const llmStmt = this.db.prepare(`
+      SELECT
+        model,
+        COUNT(*) as calls,
+        SUM(duration_ms) as total_ms,
+        AVG(duration_ms) as avg_ms,
+        SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
+      FROM spans
+      WHERE session_id IN (${placeholders})
+        AND span_type = 'agent_llm_active'
+      GROUP BY model
+    `);
+    const llmRows = llmStmt.all(...sessionIds) as Array<{
+      model: string | null;
+      calls: number;
+      total_ms: number;
+      avg_ms: number;
+      errors: number;
+    }>;
+
+    // Time breakdown - tools
+    const toolStats = this.getToolStatsMulti(sessionIds);
+
+    const timeBreakdown: AggregateData["timeBreakdown"] = [];
+
+    // Add LLM
+    for (const row of llmRows) {
+      timeBreakdown.push({
+        name: row.model ? `LLM (${row.model.split("-").slice(0, 3).join("-")})` : "LLM",
+        type: "llm",
+        calls: row.calls,
+        totalMs: row.total_ms,
+        avgMs: row.avg_ms,
+        p95Ms: 0,
+        errors: row.errors,
+      });
+    }
+
+    // Add tools
+    for (const tool of toolStats) {
+      timeBreakdown.push({
+        name: tool.mcpServer ? `${tool.mcpServer}::${tool.toolName}` : tool.toolName,
+        type: tool.toolFamily === "mcp" ? "mcp" : "builtin",
+        calls: tool.callCount,
+        totalMs: tool.totalDurationMs,
+        avgMs: tool.avgDurationMs,
+        p95Ms: tool.p95DurationMs,
+        errors: tool.errorCount,
+      });
+    }
+
+    // Sort by totalMs DESC
+    timeBreakdown.sort((a, b) => b.totalMs - a.totalMs);
+
+    return {
+      totals: {
+        cost: totalsRow.cost ?? 0,
+        inputTokens: totalsRow.input_tokens ?? 0,
+        outputTokens: totalsRow.output_tokens ?? 0,
+        cacheReadTokens: totalsRow.cache_read_tokens ?? 0,
+      },
+      tokensOverTime: tokensRows.map((r) => ({
+        ts: r.ts,
+        inputTokens: r.input_tokens,
+        outputTokens: r.output_tokens,
+        cacheReadTokens: r.cache_read_tokens,
+      })),
+      timeBreakdown,
+    };
+  }
+
+  getToolStatsMulti(sessionIds: string[]): ToolStats[] {
+    const placeholders = sessionIds.map(() => "?").join(",");
+    const stmt = this.db.prepare(`
+      SELECT
+        tc.tool_name,
+        tc.tool_family,
+        tc.mcp_server,
+        tc.status,
+        tc.input_bytes,
+        tc.output_bytes,
+        s.duration_ms
+      FROM tool_calls tc
+      JOIN spans s ON tc.span_id = s.span_id
+      WHERE tc.session_id IN (${placeholders})
+      ORDER BY tc.tool_name, tc.tool_family, tc.mcp_server
+    `);
+
+    const rows = stmt.all(...sessionIds) as Array<{
+      tool_name: string;
+      tool_family: string;
+      mcp_server: string | null;
+      status: string;
+      input_bytes: number;
+      output_bytes: number;
+      duration_ms: number;
+    }>;
+
+    // Same grouping logic as getToolStats
+    const groups = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const key = `${row.tool_name}|${row.tool_family}|${row.mcp_server ?? ""}`;
+      const group = groups.get(key) ?? [];
+      group.push(row);
+      groups.set(key, group);
+    }
+
+    const stats: ToolStats[] = [];
+    for (const [, group] of groups) {
+      const first = group[0];
+      const durations = group.map((r) => r.duration_ms).sort((a, b) => a - b);
+      const callCount = group.length;
+      const errorCount = group.filter((r) => r.status === "error").length;
+      const totalDurationMs = durations.reduce((sum, d) => sum + d, 0);
+      const totalInputBytes = group.reduce((sum, r) => sum + r.input_bytes, 0);
+      const totalOutputBytes = group.reduce((sum, r) => sum + r.output_bytes, 0);
+
+      stats.push({
+        toolName: first.tool_name,
+        toolFamily: first.tool_family,
+        mcpServer: first.mcp_server,
+        callCount,
+        totalDurationMs,
+        avgDurationMs: totalDurationMs / callCount,
+        p50DurationMs: this.percentile(durations, 50),
+        p95DurationMs: this.percentile(durations, 95),
+        maxDurationMs: durations[durations.length - 1] ?? 0,
+        errorCount,
+        errorRate: errorCount / callCount,
+        totalInputBytes,
+        totalOutputBytes,
+      });
+    }
+
+    stats.sort((a, b) => b.totalDurationMs - a.totalDurationMs);
+    return stats;
   }
 }
