@@ -45,10 +45,15 @@ export function createApp(repo: Repository, options: AppOptions = {}) {
     const sessionIdsParam = c.req.query("sessions");
     const sessionIds = sessionIdsParam ? sessionIdsParam.split(",") : [];
 
+    const startTimeParam = c.req.query("startTime");
+    const endTimeParam = c.req.query("endTime");
+    const startTime = startTimeParam ? parseInt(startTimeParam, 10) : undefined;
+    const endTime = endTimeParam ? parseInt(endTimeParam, 10) : undefined;
+
     // If no sessions specified, use all
     const ids = sessionIds.length > 0 ? sessionIds : repo.listSessions().map(s => s.sessionId);
 
-    const data = repo.getAggregate(ids);
+    const data = repo.getAggregate(ids, startTime, endTime);
     return c.json(data);
   });
 
