@@ -56,7 +56,7 @@ export function TokensChart({ data }: Props) {
         data: data.map((d) => [d.ts, d.inputTokens]),
         itemStyle: { color: "#58a6ff" },
         showSymbol: false,
-        smooth: false,
+        smooth: true,
       },
       {
         name: "Output",
@@ -64,7 +64,7 @@ export function TokensChart({ data }: Props) {
         data: data.map((d) => [d.ts, d.outputTokens]),
         itemStyle: { color: "#3fb950" },
         showSymbol: false,
-        smooth: false,
+        smooth: true,
       },
     ],
     backgroundColor: "transparent",

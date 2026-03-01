@@ -467,26 +467,32 @@ export class Repository {
     const maxTs = rows[rows.length - 1].ts;
     const rangeMs = maxTs - minTs;
 
-    // Choose bucket size based on range (aim for ~50-100 buckets)
-    // < 10 min: 10 second buckets
-    // < 1 hour: 30 second buckets
-    // < 6 hours: 2 minute buckets
-    // < 1 day: 10 minute buckets
-    // < 1 week: 30 minute buckets
-    // >= 1 week: 2 hour buckets
+    // Choose bucket size based on range (aim for ~100-200 buckets)
+    // < 5 min: 5 second buckets
+    // < 30 min: 10 second buckets
+    // < 2 hours: 30 second buckets
+    // < 8 hours: 2 minute buckets
+    // < 1 day: 5 minute buckets
+    // < 3 days: 10 minute buckets
+    // < 1 week: 20 minute buckets
+    // >= 1 week: 1 hour buckets
     let bucketMs: number;
-    if (rangeMs < 10 * 60 * 1000) {
+    if (rangeMs < 5 * 60 * 1000) {
+      bucketMs = 5 * 1000; // 5 seconds
+    } else if (rangeMs < 30 * 60 * 1000) {
       bucketMs = 10 * 1000; // 10 seconds
-    } else if (rangeMs < 60 * 60 * 1000) {
+    } else if (rangeMs < 2 * 60 * 60 * 1000) {
       bucketMs = 30 * 1000; // 30 seconds
-    } else if (rangeMs < 6 * 60 * 60 * 1000) {
+    } else if (rangeMs < 8 * 60 * 60 * 1000) {
       bucketMs = 2 * 60 * 1000; // 2 minutes
     } else if (rangeMs < 24 * 60 * 60 * 1000) {
+      bucketMs = 5 * 60 * 1000; // 5 minutes
+    } else if (rangeMs < 3 * 24 * 60 * 60 * 1000) {
       bucketMs = 10 * 60 * 1000; // 10 minutes
     } else if (rangeMs < 7 * 24 * 60 * 60 * 1000) {
-      bucketMs = 30 * 60 * 1000; // 30 minutes
+      bucketMs = 20 * 60 * 1000; // 20 minutes
     } else {
-      bucketMs = 2 * 60 * 60 * 1000; // 2 hours
+      bucketMs = 60 * 60 * 1000; // 1 hour
     }
 
     // Group data into buckets
