@@ -29,6 +29,7 @@ export interface AggregateData {
     inputTokens: number;
     outputTokens: number;
     cacheReadTokens: number;
+    durationMs: number;
   };
   tokensOverTime: Array<{
     ts: number;
@@ -41,10 +42,55 @@ export interface AggregateData {
     type: "llm" | "builtin" | "mcp";
     calls: number;
     totalMs: number;
+    wallClockMs: number;
+    pctOfSession: number;
     avgMs: number;
     p95Ms: number;
     errors: number;
   }>;
+}
+
+// Max reasonable duration for a single span (10 minutes)
+// Spans longer than this are likely bad data from unclosed spans
+const MAX_SPAN_DURATION_MS = 10 * 60 * 1000;
+
+function mergeIntervals(spans: Array<{ startTs: number; endTs: number; durationMs?: number }>): number {
+  if (spans.length === 0) return 0;
+
+  // Sanitize: cap unreasonable durations using durationMs as fallback if available
+  const sanitized = spans.map((s) => {
+    const intervalDuration = s.endTs - s.startTs;
+    if (intervalDuration <= MAX_SPAN_DURATION_MS) {
+      return { startTs: s.startTs, endTs: s.endTs };
+    }
+    // Use durationMs if available and reasonable, otherwise cap
+    const duration = s.durationMs !== undefined && s.durationMs <= MAX_SPAN_DURATION_MS
+      ? s.durationMs
+      : MAX_SPAN_DURATION_MS;
+    return { startTs: s.startTs, endTs: s.startTs + duration };
+  });
+
+  // Sort by start time
+  const sorted = sanitized.sort((a, b) => a.startTs - b.startTs);
+
+  let totalMs = 0;
+  let currentStart = sorted[0].startTs;
+  let currentEnd = sorted[0].endTs;
+
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].startTs <= currentEnd) {
+      // Overlapping - extend current interval
+      currentEnd = Math.max(currentEnd, sorted[i].endTs);
+    } else {
+      // Gap - finalize current interval, start new one
+      totalMs += currentEnd - currentStart;
+      currentStart = sorted[i].startTs;
+      currentEnd = sorted[i].endTs;
+    }
+  }
+  totalMs += currentEnd - currentStart;
+
+  return totalMs;
 }
 
 export class Repository {
@@ -349,24 +395,30 @@ export class Repository {
     return sortedArr[Math.max(0, index)];
   }
 
-  getAggregate(sessionIds: string[]): AggregateData {
+  getAggregate(sessionIds: string[], startTime?: number, endTime?: number): AggregateData {
     if (sessionIds.length === 0) {
-      return { totals: { cost: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 }, tokensOverTime: [], timeBreakdown: [] };
+      return { totals: { cost: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, durationMs: 0 }, tokensOverTime: [], timeBreakdown: [] };
     }
 
     const placeholders = sessionIds.map(() => "?").join(",");
 
-    // Totals
+    const timeFilter = startTime !== undefined && endTime !== undefined
+      ? ` AND start_ts >= ${startTime} AND start_ts <= ${endTime}`
+      : "";
+
+    // Totals (including total duration)
     const totalsStmt = this.db.prepare(`
       SELECT
         SUM(estimated_cost_usd) as cost,
         SUM(total_input_tokens) as input_tokens,
         SUM(total_output_tokens) as output_tokens,
-        SUM(total_cache_read_tokens) as cache_read_tokens
+        SUM(total_cache_read_tokens) as cache_read_tokens,
+        SUM(duration_ms) as duration_ms
       FROM sessions
       WHERE session_id IN (${placeholders})
     `);
     const totalsRow = totalsStmt.get(...sessionIds) as Record<string, number>;
+    const totalDurationMs = totalsRow.duration_ms ?? 0;
 
     // Tokens over time (from spans with LLM activity)
     const tokensStmt = this.db.prepare(`
@@ -377,7 +429,7 @@ export class Repository {
         cache_read_tokens
       FROM spans
       WHERE session_id IN (${placeholders})
-        AND (input_tokens > 0 OR output_tokens > 0)
+        AND (input_tokens > 0 OR output_tokens > 0)${timeFilter}
       ORDER BY start_ts ASC
     `);
     const tokensRows = tokensStmt.all(...sessionIds) as Array<{
@@ -387,71 +439,158 @@ export class Repository {
       cache_read_tokens: number;
     }>;
 
-    // Bucket tokens by time interval
-    const bucketedTokens = this.bucketTokensByTime(tokensRows);
+    // Calculate totals - from filtered spans when time filter is active, otherwise from sessions
+    let totals: { cost: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; durationMs: number };
 
-    // Time breakdown - LLM spans
-    const llmStmt = this.db.prepare(`
-      SELECT
-        model,
-        COUNT(*) as calls,
-        SUM(duration_ms) as total_ms,
-        AVG(duration_ms) as avg_ms,
-        SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
-      FROM spans
-      WHERE session_id IN (${placeholders})
-        AND span_type = 'agent_llm_active'
-      GROUP BY model
-    `);
-    const llmRows = llmStmt.all(...sessionIds) as Array<{
-      model: string | null;
-      calls: number;
-      total_ms: number;
-      avg_ms: number;
-      errors: number;
-    }>;
-
-    // Time breakdown - tools
-    const toolStats = this.getToolStatsMulti(sessionIds);
-
-    const timeBreakdown: AggregateData["timeBreakdown"] = [];
-
-    // Add LLM
-    for (const row of llmRows) {
-      timeBreakdown.push({
-        name: row.model ? `LLM (${row.model.split("-").slice(0, 3).join("-")})` : "LLM",
-        type: "llm",
-        calls: row.calls,
-        totalMs: row.total_ms,
-        avgMs: row.avg_ms,
-        p95Ms: 0,
-        errors: row.errors,
-      });
-    }
-
-    // Add tools
-    for (const tool of toolStats) {
-      timeBreakdown.push({
-        name: tool.mcpServer ? `${tool.mcpServer}::${tool.toolName}` : tool.toolName,
-        type: tool.toolFamily === "mcp" ? "mcp" : "builtin",
-        calls: tool.callCount,
-        totalMs: tool.totalDurationMs,
-        avgMs: tool.avgDurationMs,
-        p95Ms: tool.p95DurationMs,
-        errors: tool.errorCount,
-      });
-    }
-
-    // Sort by totalMs DESC
-    timeBreakdown.sort((a, b) => b.totalMs - a.totalMs);
-
-    return {
-      totals: {
+    if (startTime !== undefined && endTime !== undefined) {
+      // Calculate from filtered spans
+      const inputTokens = tokensRows.reduce((sum, r) => sum + r.input_tokens, 0);
+      const outputTokens = tokensRows.reduce((sum, r) => sum + r.output_tokens, 0);
+      const cacheReadTokens = tokensRows.reduce((sum, r) => sum + r.cache_read_tokens, 0);
+      totals = { cost: 0, inputTokens, outputTokens, cacheReadTokens, durationMs: 0 };
+    } else {
+      // Use session totals (existing logic)
+      totals = {
         cost: totalsRow.cost ?? 0,
         inputTokens: totalsRow.input_tokens ?? 0,
         outputTokens: totalsRow.output_tokens ?? 0,
         cacheReadTokens: totalsRow.cache_read_tokens ?? 0,
-      },
+        durationMs: 0,
+      };
+    }
+
+    // Bucket tokens by time interval
+    const bucketedTokens = this.bucketTokensByTime(tokensRows);
+
+    // Get all span intervals for wall clock computation
+    // LLM spans with their intervals
+    const llmIntervalsStmt = this.db.prepare(`
+      SELECT
+        model,
+        start_ts,
+        end_ts,
+        duration_ms,
+        status
+      FROM spans
+      WHERE session_id IN (${placeholders})
+        AND span_type = 'agent_llm_active'${timeFilter}
+      ORDER BY model
+    `);
+    const llmIntervalRows = llmIntervalsStmt.all(...sessionIds) as Array<{
+      model: string | null;
+      start_ts: number;
+      end_ts: number;
+      duration_ms: number;
+      status: string;
+    }>;
+
+    // Tool spans with their intervals
+    const toolIntervalsStmt = this.db.prepare(`
+      SELECT
+        tc.tool_name,
+        tc.tool_family,
+        tc.mcp_server,
+        tc.status,
+        s.start_ts,
+        s.end_ts,
+        s.duration_ms
+      FROM tool_calls tc
+      JOIN spans s ON tc.span_id = s.span_id
+      WHERE tc.session_id IN (${placeholders})${timeFilter}
+      ORDER BY tc.tool_name, tc.tool_family, tc.mcp_server
+    `);
+    const toolIntervalRows = toolIntervalsStmt.all(...sessionIds) as Array<{
+      tool_name: string;
+      tool_family: string;
+      mcp_server: string | null;
+      status: string;
+      start_ts: number;
+      end_ts: number;
+      duration_ms: number;
+    }>;
+
+    // Compute total ACTIVE session duration by merging all span intervals
+    // This excludes idle time (laptop closed, user away, etc.)
+    const allIntervals: Array<{ startTs: number; endTs: number; durationMs: number }> = [];
+    for (const r of llmIntervalRows) {
+      allIntervals.push({ startTs: r.start_ts, endTs: r.end_ts, durationMs: r.duration_ms });
+    }
+    for (const r of toolIntervalRows) {
+      allIntervals.push({ startTs: r.start_ts, endTs: r.end_ts, durationMs: r.duration_ms });
+    }
+    const activeDurationMs = mergeIntervals(allIntervals);
+
+    const timeBreakdown: AggregateData["timeBreakdown"] = [];
+
+    // Group LLM intervals by model and compute wall clock time
+    const llmGroups = new Map<string, typeof llmIntervalRows>();
+    for (const row of llmIntervalRows) {
+      const key = row.model ?? "unknown";
+      const group = llmGroups.get(key) ?? [];
+      group.push(row);
+      llmGroups.set(key, group);
+    }
+
+    for (const [model, rows] of llmGroups) {
+      const intervals = rows.map((r) => ({ startTs: r.start_ts, endTs: r.end_ts, durationMs: r.duration_ms }));
+      const wallClockMs = mergeIntervals(intervals);
+      // Cap individual durations to avoid idle time skewing averages
+      const sanitizedDurations = rows.map((r) => Math.min(r.duration_ms, MAX_SPAN_DURATION_MS));
+      const totalMs = sanitizedDurations.reduce((sum, d) => sum + d, 0);
+      const errors = rows.filter((r) => r.status === "error").length;
+
+      timeBreakdown.push({
+        name: model !== "unknown" ? `LLM (${model.split("-").slice(0, 3).join("-")})` : "LLM",
+        type: "llm",
+        calls: rows.length,
+        totalMs,
+        wallClockMs,
+        pctOfSession: activeDurationMs > 0 ? (wallClockMs / activeDurationMs) * 100 : 0,
+        avgMs: rows.length > 0 ? totalMs / rows.length : 0,
+        p95Ms: this.percentile(sanitizedDurations.sort((a, b) => a - b), 95),
+        errors,
+      });
+    }
+
+    // Group tool intervals and compute wall clock time
+    const toolGroups = new Map<string, typeof toolIntervalRows>();
+    for (const row of toolIntervalRows) {
+      const key = `${row.tool_name}|${row.tool_family}|${row.mcp_server ?? ""}`;
+      const group = toolGroups.get(key) ?? [];
+      group.push(row);
+      toolGroups.set(key, group);
+    }
+
+    for (const [, rows] of toolGroups) {
+      const first = rows[0];
+      const intervals = rows.map((r) => ({ startTs: r.start_ts, endTs: r.end_ts, durationMs: r.duration_ms }));
+      const wallClockMs = mergeIntervals(intervals);
+      // Cap individual durations to avoid idle time skewing averages
+      const durations = rows.map((r) => Math.min(r.duration_ms, MAX_SPAN_DURATION_MS)).sort((a, b) => a - b);
+      const totalMs = durations.reduce((sum, d) => sum + d, 0);
+      const errors = rows.filter((r) => r.status === "error").length;
+
+      timeBreakdown.push({
+        name: first.mcp_server ? `${first.mcp_server}::${first.tool_name}` : first.tool_name,
+        type: first.tool_family === "mcp" ? "mcp" : "builtin",
+        calls: rows.length,
+        totalMs,
+        wallClockMs,
+        pctOfSession: activeDurationMs > 0 ? (wallClockMs / activeDurationMs) * 100 : 0,
+        avgMs: rows.length > 0 ? totalMs / rows.length : 0,
+        p95Ms: this.percentile(durations, 95),
+        errors,
+      });
+    }
+
+    // Sort by wallClockMs DESC (now sorting by actual time contribution)
+    timeBreakdown.sort((a, b) => b.wallClockMs - a.wallClockMs);
+
+    // Update durationMs with the computed active duration
+    totals.durationMs = activeDurationMs;
+
+    return {
+      totals,
       tokensOverTime: bucketedTokens,
       timeBreakdown,
     };
