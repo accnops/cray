@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, test, expect, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
 import { createSchema, Repository } from "@ccray/db";
 import { createApp } from "./routes.js";
@@ -54,5 +54,22 @@ describe("API routes", () => {
     const res = await app.request("/api/sessions/nonexistent");
 
     expect(res.status).toBe(404);
+  });
+
+  describe("GET /api/messages", () => {
+    test("returns messages for sessions", async () => {
+      const res = await app.request("/api/messages?sessions=sess1");
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data).toHaveProperty("messages");
+      expect(data).toHaveProperty("agents");
+      expect(Array.isArray(data.messages)).toBe(true);
+    });
+
+    test("filters by time range", async () => {
+      const res = await app.request("/api/messages?sessions=sess1&startTime=1000&endTime=2000");
+      expect(res.status).toBe(200);
+    });
   });
 });
