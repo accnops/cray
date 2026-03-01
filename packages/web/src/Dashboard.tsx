@@ -4,6 +4,7 @@ import { useApi } from "./hooks/useApi";
 import { SessionFilter } from "./components/SessionFilter";
 import { TokensChart } from "./components/TokensChart";
 import { TimeBreakdown } from "./components/TimeBreakdown";
+import { ChatSidebar } from "./components/ChatSidebar";
 
 function getProjectName(path: string): string {
   if (!path) return "";
@@ -123,25 +124,31 @@ export function Dashboard() {
       </header>
 
       <main className="dashboard-main">
-        {loading ? (
-          <div className="loading">Loading data...</div>
-        ) : aggregate ? (
-          <>
-            <section className="panel">
-              <h2>Tokens Over Time</h2>
-              <TokensChart
-                data={aggregate.tokensOverTime}
-                onZoomChange={setTimeRange}
-                isZoomed={timeRange !== null}
-              />
-            </section>
+        <div className="dashboard-body">
+          <div className="main-content">
+            {loading ? (
+              <div className="loading">Loading data...</div>
+            ) : aggregate ? (
+              <>
+                <section className="panel">
+                  <h2>Tokens Over Time</h2>
+                  <TokensChart
+                    data={aggregate.tokensOverTime}
+                    onZoomChange={setTimeRange}
+                    isZoomed={timeRange !== null}
+                  />
+                </section>
 
-            <section className="panel">
-              <h2>Time Breakdown</h2>
-              <TimeBreakdown data={aggregate.timeBreakdown} sessionDurationMs={aggregate.totals.durationMs} />
-            </section>
-          </>
-        ) : null}
+                <section className="panel">
+                  <h2>Time Breakdown</h2>
+                  <TimeBreakdown data={aggregate.timeBreakdown} sessionDurationMs={aggregate.totals.durationMs} />
+                </section>
+              </>
+            ) : null}
+          </div>
+
+          <ChatSidebar sessionIds={selectedIds} timeRange={timeRange} />
+        </div>
       </main>
     </div>
   );
