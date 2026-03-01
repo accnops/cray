@@ -986,6 +986,14 @@ export class Repository {
           toolId: (block.id as string) ?? "",
           input: block.input ?? {},
         });
+      } else if (block.type === "tool_result") {
+        const output = this.extractToolResultOutput(block.content);
+        blocks.push({
+          type: "tool_result",
+          toolId: (block.tool_use_id as string) ?? "",
+          output,
+          isError: block.is_error === true,
+        });
       }
     }
 
