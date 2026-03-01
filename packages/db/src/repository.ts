@@ -964,7 +964,8 @@ export class Repository {
   private extractContentBlocks(content: unknown): ChatContentBlock[] {
     // Handle string content (common for user messages)
     if (typeof content === "string") {
-      return content.trim() ? [{ type: "text", text: content }] : [];
+      const cleaned = this.cleanUserMessageText(content);
+      return cleaned.trim() ? [{ type: "text", text: cleaned }] : [];
     }
 
     if (!Array.isArray(content)) return [];
@@ -1014,5 +1015,27 @@ export class Repository {
         .join("\n");
     }
     return JSON.stringify(content);
+  }
+
+  private cleanUserMessageText(text: string): string {
+    // Check for command format: <command-name>/cmd</command-name><command-args>...</command-args>
+    const commandNameMatch = text.match(/<command-name>([^<]+)<\/command-name>/);
+    const commandArgsMatch = text.match(/<command-args>([\s\S]*?)<\/command-args>/);
+
+    if (commandNameMatch) {
+      const cmdName = commandNameMatch[1].trim();
+      const cmdArgs = commandArgsMatch ? commandArgsMatch[1].trim() : "";
+      return cmdArgs ? `${cmdName} ${cmdArgs}` : cmdName;
+    }
+
+    // Strip other common meta tags that don't add value
+    let cleaned = text
+      .replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/g, "")
+      .replace(/<local-command-stdout>[\s\S]*?<\/local-command-stdout>/g, "")
+      .replace(/<command-message>[\s\S]*?<\/command-message>/g, "")
+      .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+      .trim();
+
+    return cleaned;
   }
 }
