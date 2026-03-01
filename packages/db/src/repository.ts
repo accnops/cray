@@ -467,32 +467,32 @@ export class Repository {
     const maxTs = rows[rows.length - 1].ts;
     const rangeMs = maxTs - minTs;
 
-    // Choose bucket size based on range (aim for ~100-200 buckets)
-    // < 5 min: 5 second buckets
+    // Choose bucket size based on range (finer granularity)
+    // < 5 min: 3 second buckets
     // < 30 min: 10 second buckets
     // < 2 hours: 30 second buckets
-    // < 8 hours: 2 minute buckets
-    // < 1 day: 5 minute buckets
-    // < 3 days: 10 minute buckets
-    // < 1 week: 20 minute buckets
-    // >= 1 week: 1 hour buckets
+    // < 6 hours: 1 minute buckets
+    // < 1 day: 2 minute buckets
+    // < 3 days: 5 minute buckets
+    // < 1 week: 10 minute buckets
+    // >= 1 week: 30 minute buckets
     let bucketMs: number;
     if (rangeMs < 5 * 60 * 1000) {
-      bucketMs = 5 * 1000; // 5 seconds
+      bucketMs = 3 * 1000; // 3 seconds
     } else if (rangeMs < 30 * 60 * 1000) {
       bucketMs = 10 * 1000; // 10 seconds
     } else if (rangeMs < 2 * 60 * 60 * 1000) {
       bucketMs = 30 * 1000; // 30 seconds
-    } else if (rangeMs < 8 * 60 * 60 * 1000) {
-      bucketMs = 2 * 60 * 1000; // 2 minutes
+    } else if (rangeMs < 6 * 60 * 60 * 1000) {
+      bucketMs = 60 * 1000; // 1 minute
     } else if (rangeMs < 24 * 60 * 60 * 1000) {
-      bucketMs = 5 * 60 * 1000; // 5 minutes
+      bucketMs = 2 * 60 * 1000; // 2 minutes
     } else if (rangeMs < 3 * 24 * 60 * 60 * 1000) {
-      bucketMs = 10 * 60 * 1000; // 10 minutes
+      bucketMs = 5 * 60 * 1000; // 5 minutes
     } else if (rangeMs < 7 * 24 * 60 * 60 * 1000) {
-      bucketMs = 20 * 60 * 1000; // 20 minutes
+      bucketMs = 10 * 60 * 1000; // 10 minutes
     } else {
-      bucketMs = 60 * 60 * 1000; // 1 hour
+      bucketMs = 30 * 60 * 1000; // 30 minutes
     }
 
     // Group data into buckets
@@ -507,21 +507,44 @@ export class Repository {
       buckets.set(bucketTs, existing);
     }
 
-    // Fill gaps with zeros between min and max
-    const startBucket = Math.floor(minTs / bucketMs) * bucketMs;
-    const endBucket = Math.floor(maxTs / bucketMs) * bucketMs;
-    const result: Array<{ ts: number; inputTokens: number; outputTokens: number; cacheReadTokens: number }> = [];
+    // Get sorted bucket timestamps
+    const sortedBuckets = Array.from(buckets.keys()).sort((a, b) => a - b);
 
-    for (let ts = startBucket; ts <= endBucket; ts += bucketMs) {
-      const data = buckets.get(ts);
-      result.push({
-        ts,
-        inputTokens: data?.input ?? 0,
-        outputTokens: data?.output ?? 0,
-        cacheReadTokens: data?.cache ?? 0,
-      });
+    // Build result with zero anchors before/after each data point
+    const result: Array<{ ts: number; inputTokens: number; outputTokens: number; cacheReadTokens: number }> = [];
+    const addedTimestamps = new Set<number>();
+
+    for (const ts of sortedBuckets) {
+      const data = buckets.get(ts)!;
+
+      // Add zero point before if not adjacent to previous data
+      const prevTs = ts - bucketMs;
+      if (!buckets.has(prevTs) && !addedTimestamps.has(prevTs)) {
+        result.push({ ts: prevTs, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 });
+        addedTimestamps.add(prevTs);
+      }
+
+      // Add the actual data point
+      if (!addedTimestamps.has(ts)) {
+        result.push({
+          ts,
+          inputTokens: data.input,
+          outputTokens: data.output,
+          cacheReadTokens: data.cache,
+        });
+        addedTimestamps.add(ts);
+      }
+
+      // Add zero point after if not adjacent to next data
+      const nextTs = ts + bucketMs;
+      if (!buckets.has(nextTs) && !addedTimestamps.has(nextTs)) {
+        result.push({ ts: nextTs, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 });
+        addedTimestamps.add(nextTs);
+      }
     }
 
+    // Sort by timestamp
+    result.sort((a, b) => a.ts - b.ts);
     return result;
   }
 
