@@ -467,23 +467,29 @@ export class Repository {
     const maxTs = rows[rows.length - 1].ts;
     const rangeMs = maxTs - minTs;
 
-    // Choose bucket size based on range
-    // < 1 hour: 1 minute buckets
-    // < 1 day: 5 minute buckets
-    // < 1 week: 1 hour buckets
-    // >= 1 week: 1 day buckets
+    // Choose bucket size based on range (aim for ~50-100 buckets)
+    // < 10 min: 10 second buckets
+    // < 1 hour: 30 second buckets
+    // < 6 hours: 2 minute buckets
+    // < 1 day: 10 minute buckets
+    // < 1 week: 30 minute buckets
+    // >= 1 week: 2 hour buckets
     let bucketMs: number;
-    if (rangeMs < 60 * 60 * 1000) {
-      bucketMs = 60 * 1000; // 1 minute
+    if (rangeMs < 10 * 60 * 1000) {
+      bucketMs = 10 * 1000; // 10 seconds
+    } else if (rangeMs < 60 * 60 * 1000) {
+      bucketMs = 30 * 1000; // 30 seconds
+    } else if (rangeMs < 6 * 60 * 60 * 1000) {
+      bucketMs = 2 * 60 * 1000; // 2 minutes
     } else if (rangeMs < 24 * 60 * 60 * 1000) {
-      bucketMs = 5 * 60 * 1000; // 5 minutes
+      bucketMs = 10 * 60 * 1000; // 10 minutes
     } else if (rangeMs < 7 * 24 * 60 * 60 * 1000) {
-      bucketMs = 60 * 60 * 1000; // 1 hour
+      bucketMs = 30 * 60 * 1000; // 30 minutes
     } else {
-      bucketMs = 24 * 60 * 60 * 1000; // 1 day
+      bucketMs = 2 * 60 * 60 * 1000; // 2 hours
     }
 
-    // Group into buckets
+    // Group data into buckets
     const buckets = new Map<number, { input: number; output: number; cache: number }>();
 
     for (const row of rows) {
@@ -495,15 +501,22 @@ export class Repository {
       buckets.set(bucketTs, existing);
     }
 
-    // Convert to array sorted by timestamp
-    return Array.from(buckets.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([ts, data]) => ({
+    // Fill gaps with zeros between min and max
+    const startBucket = Math.floor(minTs / bucketMs) * bucketMs;
+    const endBucket = Math.floor(maxTs / bucketMs) * bucketMs;
+    const result: Array<{ ts: number; inputTokens: number; outputTokens: number; cacheReadTokens: number }> = [];
+
+    for (let ts = startBucket; ts <= endBucket; ts += bucketMs) {
+      const data = buckets.get(ts);
+      result.push({
         ts,
-        inputTokens: data.input,
-        outputTokens: data.output,
-        cacheReadTokens: data.cache,
-      }));
+        inputTokens: data?.input ?? 0,
+        outputTokens: data?.output ?? 0,
+        cacheReadTokens: data?.cache ?? 0,
+      });
+    }
+
+    return result;
   }
 
   getToolStatsMulti(sessionIds: string[]): ToolStats[] {
