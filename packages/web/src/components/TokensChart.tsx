@@ -1,4 +1,5 @@
 import ReactECharts from "echarts-for-react";
+import { useRef, useCallback } from "react";
 
 interface DataPoint {
   ts: number;
@@ -9,9 +10,11 @@ interface DataPoint {
 
 interface Props {
   data: DataPoint[];
+  onZoomChange?: (range: { start: number; end: number } | null) => void;
 }
 
-export function TokensChart({ data }: Props) {
+export function TokensChart({ data, onZoomChange }: Props) {
+  const chartRef = useRef<ReactECharts>(null);
   if (data.length === 0) {
     return <div className="empty">No token data</div>;
   }
@@ -23,7 +26,7 @@ export function TokensChart({ data }: Props) {
         const date = new Date(params[0].axisValue).toLocaleString();
         let html = `<strong>${date}</strong><br/>`;
         for (const p of params) {
-          html += `${p.marker} ${p.seriesName}: ${p.value.toLocaleString()}<br/>`;
+          html += `${p.marker} ${p.seriesName}: ${formatNumber(p.value[1])}<br/>`;
         }
         return html;
       },
@@ -31,6 +34,7 @@ export function TokensChart({ data }: Props) {
     legend: {
       data: ["Input", "Output"],
       textStyle: { color: "#8b949e" },
+      top: 0,
     },
     grid: {
       left: "3%",
@@ -68,9 +72,55 @@ export function TokensChart({ data }: Props) {
       },
     ],
     backgroundColor: "transparent",
+    toolbox: {
+      feature: {
+        brush: {
+          type: ["lineX", "clear"],
+          title: { lineX: "Zoom", clear: "Reset" },
+        },
+      },
+      right: 20,
+      top: 0,
+    },
+    brush: {
+      toolbox: ["lineX", "clear"],
+      xAxisIndex: 0,
+      brushStyle: {
+        borderWidth: 1,
+        color: "rgba(88, 166, 255, 0.2)",
+        borderColor: "#58a6ff",
+      },
+    },
   };
 
-  return <ReactECharts option={option} style={{ height: 300 }} />;
+  const onBrushEnd = useCallback((params: any) => {
+    if (!onZoomChange) return;
+
+    const areas = params.areas;
+    if (!areas || areas.length === 0) return;
+
+    const area = areas[0];
+    if (area.coordRange && area.coordRange.length === 2) {
+      const [start, end] = area.coordRange;
+      // Ignore tiny selections (< 1 second)
+      if (end - start < 1000) return;
+      onZoomChange({ start, end });
+    }
+  }, [onZoomChange]);
+
+  const onEvents = {
+    brushEnd: onBrushEnd,
+    dblclick: () => onZoomChange?.(null),
+  };
+
+  return (
+    <ReactECharts
+      ref={chartRef}
+      option={option}
+      style={{ height: 300 }}
+      onEvents={onEvents}
+    />
+  );
 }
 
 function formatNumber(n: number): string {
