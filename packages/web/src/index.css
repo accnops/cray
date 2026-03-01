@@ -38,15 +38,32 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+.header-left {
+  flex: 1;
+}
+
 .header-left h1 {
   font-size: 1.5rem;
   font-weight: 600;
 }
 
-.header-right {
+.header-center {
+  flex: 1;
   display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 2rem;
+  gap: 1rem;
+}
+
+.project-title {
+  font-size: 1rem;
+  color: var(--text-secondary);
+}
+
+.header-right {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .totals {
@@ -159,8 +176,15 @@ body {
 .filter-label {
   display: flex;
   flex-direction: column;
-  gap: 0.125rem;
+  gap: 0.25rem;
+  min-width: 0;
   overflow: hidden;
+}
+
+.filter-label-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
 }
 
 .filter-label .project {
@@ -176,9 +200,11 @@ body {
 .filter-label .message {
   font-size: 0.75rem;
   color: var(--text-secondary);
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.4;
 }
 
 /* Table */
@@ -230,6 +256,11 @@ body {
 
 .has-errors {
   color: var(--error);
+}
+
+.date-range {
+  color: #58a6ff;
+  font-size: 0.9em;
 }
 
 /* Utils */
