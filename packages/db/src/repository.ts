@@ -912,8 +912,18 @@ export class Repository {
     try {
       const raw = JSON.parse(row.raw_json);
 
+      // Skip meta messages (system-injected skill invocations, not real user input)
+      if (raw.isMeta === true) {
+        return null;
+      }
+
       if (row.raw_type === "user") {
         const content = this.extractContentBlocks(raw.message?.content ?? []);
+        // Skip user messages that only contain tool_result (automated responses, not real user input)
+        const hasRealContent = content.some(c => c.type === "text" || c.type === "tool_use");
+        if (!hasRealContent && content.length > 0) {
+          return null;
+        }
         return {
           eventId: row.event_id,
           agentId: row.agent_id,
