@@ -263,6 +263,30 @@ body {
   font-size: 0.9em;
 }
 
+/* Tokens Chart */
+.tokens-chart-container {
+  position: relative;
+}
+
+.zoom-clear-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.zoom-clear-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
 /* Utils */
 .loading, .empty {
   padding: 2rem;

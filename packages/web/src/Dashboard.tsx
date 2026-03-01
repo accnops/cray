@@ -7,9 +7,12 @@ import { TimeBreakdown } from "./components/TimeBreakdown";
 
 function getProjectName(path: string): string {
   if (!path) return "";
-  const parts = path.split("/");
+  // Remove trailing slashes and get last path component
+  const trimmed = path.replace(/\/+$/, "");
+  const parts = trimmed.split("/");
   const last = parts[parts.length - 1];
   if (!last) return "";
+  // Claude encodes paths like -Users-arthurcnops-Personal-projectname
   const cleaned = last.replace(/^-+/, "");
   return cleaned.split("-").pop() || cleaned || "";
 }
@@ -129,6 +132,7 @@ export function Dashboard() {
               <TokensChart
                 data={aggregate.tokensOverTime}
                 onZoomChange={setTimeRange}
+                isZoomed={timeRange !== null}
               />
             </section>
 

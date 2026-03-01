@@ -1,5 +1,5 @@
 import ReactECharts from "echarts-for-react";
-import { useRef, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 
 interface DataPoint {
   ts: number;
@@ -11,10 +11,15 @@ interface DataPoint {
 interface Props {
   data: DataPoint[];
   onZoomChange?: (range: { start: number; end: number } | null) => void;
+  isZoomed?: boolean;
 }
 
-export function TokensChart({ data, onZoomChange }: Props) {
+export function TokensChart({ data, onZoomChange, isZoomed }: Props) {
   const chartRef = useRef<ReactECharts>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dragStart, setDragStart] = useState<{ x: number; ts: number } | null>(null);
+  const [dragCurrent, setDragCurrent] = useState<number | null>(null);
+
   if (data.length === 0) {
     return <div className="empty">No token data</div>;
   }
@@ -72,54 +77,107 @@ export function TokensChart({ data, onZoomChange }: Props) {
       },
     ],
     backgroundColor: "transparent",
-    toolbox: {
-      feature: {
-        brush: {
-          type: ["lineX", "clear"],
-          title: { lineX: "Zoom", clear: "Reset" },
-        },
-      },
-      right: 20,
-      top: 0,
-    },
-    brush: {
-      toolbox: ["lineX", "clear"],
-      xAxisIndex: 0,
-      brushStyle: {
-        borderWidth: 1,
-        color: "rgba(88, 166, 255, 0.2)",
-        borderColor: "#58a6ff",
-      },
-    },
   };
 
-  const onBrushEnd = useCallback((params: any) => {
-    if (!onZoomChange) return;
+  const getTimestampFromX = useCallback((clientX: number): number | null => {
+    const chart = chartRef.current?.getEchartsInstance();
+    if (!chart || !containerRef.current) return null;
 
-    const areas = params.areas;
-    if (!areas || areas.length === 0) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const point = chart.convertFromPixel({ seriesIndex: 0 }, [x, 0]);
+    return point?.[0] ?? null;
+  }, []);
 
-    const area = areas[0];
-    if (area.coordRange && area.coordRange.length === 2) {
-      const [start, end] = area.coordRange;
-      // Ignore tiny selections (< 1 second)
-      if (end - start < 1000) return;
-      onZoomChange({ start, end });
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    const ts = getTimestampFromX(e.clientX);
+    if (ts !== null) {
+      setDragStart({ x: e.clientX, ts });
+      setDragCurrent(e.clientX);
     }
-  }, [onZoomChange]);
+  }, [getTimestampFromX]);
 
-  const onEvents = {
-    brushEnd: onBrushEnd,
-    dblclick: () => onZoomChange?.(null),
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (dragStart) {
+      setDragCurrent(e.clientX);
+    }
+  }, [dragStart]);
+
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    if (!dragStart || !onZoomChange) {
+      setDragStart(null);
+      setDragCurrent(null);
+      return;
+    }
+
+    const endTs = getTimestampFromX(e.clientX);
+    if (endTs !== null) {
+      const start = Math.min(dragStart.ts, endTs);
+      const end = Math.max(dragStart.ts, endTs);
+      // Ignore tiny selections (< 1 second)
+      if (end - start >= 1000) {
+        onZoomChange({ start, end });
+      }
+    }
+
+    setDragStart(null);
+    setDragCurrent(null);
+  }, [dragStart, getTimestampFromX, onZoomChange]);
+
+  const handleMouseLeave = useCallback(() => {
+    setDragStart(null);
+    setDragCurrent(null);
+  }, []);
+
+  // Calculate selection overlay position
+  const getSelectionStyle = (): React.CSSProperties | null => {
+    if (!dragStart || dragCurrent === null || !containerRef.current) return null;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const left = Math.min(dragStart.x, dragCurrent) - rect.left;
+    const width = Math.abs(dragCurrent - dragStart.x);
+
+    return {
+      position: "absolute",
+      left: `${left}px`,
+      top: 0,
+      width: `${width}px`,
+      height: "100%",
+      backgroundColor: "rgba(88, 166, 255, 0.2)",
+      borderLeft: "1px solid #58a6ff",
+      borderRight: "1px solid #58a6ff",
+      pointerEvents: "none",
+    };
   };
+
+  const selectionStyle = getSelectionStyle();
 
   return (
-    <ReactECharts
-      ref={chartRef}
-      option={option}
-      style={{ height: 300 }}
-      onEvents={onEvents}
-    />
+    <div className="tokens-chart-container">
+      {isZoomed && (
+        <button
+          className="zoom-clear-btn"
+          onClick={() => onZoomChange?.(null)}
+        >
+          Clear
+        </button>
+      )}
+      <div
+        ref={containerRef}
+        style={{ position: "relative", cursor: "crosshair" }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+      >
+        <ReactECharts
+          ref={chartRef}
+          option={option}
+          style={{ height: 300 }}
+        />
+        {selectionStyle && <div style={selectionStyle} />}
+      </div>
+    </div>
   );
 }
 
