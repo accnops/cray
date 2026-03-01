@@ -4,9 +4,10 @@ import { ContentBlock } from "./ContentBlock";
 
 interface ChatMessageItemProps {
   message: ChatMessage;
+  agentLabel?: string;
 }
 
-export function ChatMessageItem({ message }: ChatMessageItemProps) {
+export function ChatMessageItem({ message, agentLabel }: ChatMessageItemProps) {
   const [expanded, setExpanded] = useState(false);
 
   const toolCount = message.content.filter(
@@ -35,6 +36,9 @@ export function ChatMessageItem({ message }: ChatMessageItemProps) {
         <span className={`message-role ${message.role}`}>
           {message.role === "user" ? "User" : "Assistant"}
         </span>
+        {agentLabel && (
+          <span className={`agent-badge ${message.agentKind}`}>{agentLabel}</span>
+        )}
         <span className="message-time">{timeStr}</span>
       </div>
 

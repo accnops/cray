@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import type { MessagesResponse } from "@ccray/shared";
+import type { MessagesResponse, AgentInfo } from "@ccray/shared";
 import { useApi } from "../hooks/useApi";
-import { AgentPane } from "./AgentPane";
+import { ChatMessageItem } from "./ChatMessageItem";
 
 interface ChatSidebarProps {
   sessionIds: string[];
@@ -40,17 +40,14 @@ export function ChatSidebar({ sessionIds, timeRange }: ChatSidebarProps) {
     sessionIds.length > 0 ? `/api/messages${queryString}` : null
   );
 
-  // Group messages by agent
-  const messagesByAgent = useMemo(() => {
-    if (!data) return new Map();
-    const map = new Map<string, typeof data.messages>();
-    for (const msg of data.messages) {
-      const existing = map.get(msg.agentId) ?? [];
-      existing.push(msg);
-      map.set(msg.agentId, existing);
-    }
-    return map;
+  // Build agent lookup for labels
+  const agentLookup = useMemo(() => {
+    if (!data) return new Map<string, AgentInfo>();
+    return new Map(data.agents.map((a) => [a.agentId, a]));
   }, [data]);
+
+  // Check if we have multiple agents (to decide whether to show agent labels)
+  const hasMultipleAgents = data && data.agents.length > 1;
 
   // Resize handling
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -110,12 +107,12 @@ export function ChatSidebar({ sessionIds, timeRange }: ChatSidebarProps) {
       ) : !data || data.messages.length === 0 ? (
         <div className="sidebar-empty">No messages in selected range</div>
       ) : (
-        <div className="agent-panes">
-          {data.agents.map((agent) => (
-            <AgentPane
-              key={agent.agentId}
-              agent={agent}
-              messages={messagesByAgent.get(agent.agentId) ?? []}
+        <div className="messages-list">
+          {data.messages.map((msg) => (
+            <ChatMessageItem
+              key={msg.eventId}
+              message={msg}
+              agentLabel={hasMultipleAgents ? agentLookup.get(msg.agentId)?.label : undefined}
             />
           ))}
         </div>

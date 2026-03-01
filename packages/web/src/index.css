@@ -374,6 +374,11 @@ body {
   overflow: hidden;
 }
 
+.messages-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
 .agent-pane {
   flex: 1;
   overflow-y: auto;
@@ -440,6 +445,20 @@ body {
 
 .message-role.user {
   color: var(--accent);
+}
+
+.agent-badge {
+  font-size: 0.625rem;
+  font-weight: 500;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  background: rgba(139, 148, 158, 0.2);
+  color: var(--text-secondary);
+}
+
+.agent-badge.subagent {
+  background: rgba(192, 132, 252, 0.2);
+  color: #c084fc;
 }
 
 .message-time {
