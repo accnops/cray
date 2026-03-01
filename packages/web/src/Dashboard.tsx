@@ -5,12 +5,22 @@ import { SessionFilter } from "./components/SessionFilter";
 import { TokensChart } from "./components/TokensChart";
 import { TimeBreakdown } from "./components/TimeBreakdown";
 
+function getProjectName(path: string): string {
+  if (!path) return "";
+  const parts = path.split("/");
+  const last = parts[parts.length - 1];
+  if (!last) return "";
+  const cleaned = last.replace(/^-+/, "");
+  return cleaned.split("-").pop() || cleaned || "";
+}
+
 interface AggregateData {
   totals: {
     cost: number;
     inputTokens: number;
     outputTokens: number;
     cacheReadTokens: number;
+    durationMs: number;
   };
   tokensOverTime: Array<{
     ts: number;
@@ -23,6 +33,8 @@ interface AggregateData {
     type: "llm" | "builtin" | "mcp";
     calls: number;
     totalMs: number;
+    wallClockMs: number;
+    pctOfSession: number;
     avgMs: number;
     p95Ms: number;
     errors: number;
@@ -32,6 +44,7 @@ interface AggregateData {
 export function Dashboard() {
   const { data: sessions } = useApi<Session[]>("/api/sessions");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [timeRange, setTimeRange] = useState<{ start: number; end: number } | null>(null);
 
   // Select all sessions by default
   useEffect(() => {
@@ -40,9 +53,32 @@ export function Dashboard() {
     }
   }, [sessions]);
 
+  const projectTitle = useMemo(() => {
+    if (!sessions || selectedIds.length === 0) return null;
+    const selected = sessions.filter((s) => selectedIds.includes(s.sessionId));
+    const projects = [...new Set(selected.map((s) => getProjectName(s.projectPath)))].filter(Boolean);
+    if (projects.length === 0) return null;
+    if (projects.length === 1) return projects[0];
+    if (projects.length <= 3) return projects.join(", ");
+    return `${projects.length} projects`;
+  }, [sessions, selectedIds]);
+
   const queryString = useMemo(() => {
-    if (selectedIds.length === 0) return "";
-    return `?sessions=${selectedIds.join(",")}`;
+    const params = new URLSearchParams();
+    if (selectedIds.length > 0) {
+      params.set("sessions", selectedIds.join(","));
+    }
+    if (timeRange) {
+      params.set("startTime", timeRange.start.toString());
+      params.set("endTime", timeRange.end.toString());
+    }
+    const str = params.toString();
+    return str ? `?${str}` : "";
+  }, [selectedIds, timeRange]);
+
+  // Reset zoom when sessions change
+  useEffect(() => {
+    setTimeRange(null);
   }, [selectedIds]);
 
   const { data: aggregate, loading } = useApi<AggregateData>(
@@ -59,17 +95,22 @@ export function Dashboard() {
         <div className="header-left">
           <h1>ccray</h1>
         </div>
-        <div className="header-right">
+        <div className="header-center">
+          {projectTitle && <span className="project-title">{projectTitle}</span>}
           <SessionFilter
             sessions={sessions}
             selectedIds={selectedIds}
             onChange={setSelectedIds}
           />
+        </div>
+        <div className="header-right">
           {aggregate && (
             <div className="totals">
-              <span className="total-item">
-                <strong>${aggregate.totals.cost.toFixed(2)}</strong> cost
-              </span>
+              {timeRange && (
+                <span className="total-item date-range">
+                  {formatDateRange(timeRange.start, timeRange.end)}
+                </span>
+              )}
               <span className="total-item">
                 <strong>{formatNumber(aggregate.totals.inputTokens + aggregate.totals.outputTokens)}</strong> tokens
               </span>
@@ -85,12 +126,15 @@ export function Dashboard() {
           <>
             <section className="panel">
               <h2>Tokens Over Time</h2>
-              <TokensChart data={aggregate.tokensOverTime} />
+              <TokensChart
+                data={aggregate.tokensOverTime}
+                onZoomChange={setTimeRange}
+              />
             </section>
 
             <section className="panel">
               <h2>Time Breakdown</h2>
-              <TimeBreakdown data={aggregate.timeBreakdown} />
+              <TimeBreakdown data={aggregate.timeBreakdown} sessionDurationMs={aggregate.totals.durationMs} />
             </section>
           </>
         ) : null}
@@ -104,3 +148,15 @@ function formatNumber(n: number): string {
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return n.toString();
 }
+
+function formatDateRange(start: number, end: number): string {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  const sameDay = startDate.toDateString() === endDate.toDateString();
+
+  if (sameDay) {
+    return `${startDate.toLocaleDateString()} ${startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  }
+  return `${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`;
+}
+
