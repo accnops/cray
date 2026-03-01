@@ -108,13 +108,18 @@ export function ChatSidebar({ sessionIds, timeRange }: ChatSidebarProps) {
         <div className="sidebar-empty">No messages in selected range</div>
       ) : (
         <div className="messages-list">
-          {data.messages.map((msg) => (
-            <ChatMessageItem
-              key={msg.eventId}
-              message={msg}
-              agentLabel={hasMultipleAgents ? agentLookup.get(msg.agentId)?.label : undefined}
-            />
-          ))}
+          {data.messages.map((msg) => {
+            // Only show agent label for subagents when multiple agents exist
+            const agent = agentLookup.get(msg.agentId);
+            const showLabel = hasMultipleAgents && agent?.kind === "subagent";
+            return (
+              <ChatMessageItem
+                key={msg.eventId}
+                message={msg}
+                agentLabel={showLabel ? agent?.label : undefined}
+              />
+            );
+          })}
         </div>
       )}
     </div>

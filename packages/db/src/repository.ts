@@ -961,7 +961,12 @@ export class Repository {
     }
   }
 
-  private extractContentBlocks(content: unknown[]): ChatContentBlock[] {
+  private extractContentBlocks(content: unknown): ChatContentBlock[] {
+    // Handle string content (common for user messages)
+    if (typeof content === "string") {
+      return content.trim() ? [{ type: "text", text: content }] : [];
+    }
+
     if (!Array.isArray(content)) return [];
 
     const blocks: ChatContentBlock[] = [];
