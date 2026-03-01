@@ -5,6 +5,10 @@ import type {
   Span,
   ToolCall,
   RawEvent,
+  ChatMessage,
+  ChatContentBlock,
+  AgentInfo,
+  MessagesResponse,
 } from "@ccray/shared";
 
 export interface ToolStats {
@@ -53,6 +57,65 @@ export interface AggregateData {
 // Max reasonable duration for a single span (10 minutes)
 // Spans longer than this are likely bad data from unclosed spans
 const MAX_SPAN_DURATION_MS = 10 * 60 * 1000;
+
+interface TaggedInterval {
+  startTs: number;
+  endTs: number;
+  category: string;
+}
+
+/**
+ * Attribute time proportionally across overlapping intervals.
+ * When multiple categories are active at the same time, split the time evenly.
+ * This ensures the sum of attributed times equals the total wall clock time.
+ */
+function attributeProportional(intervals: TaggedInterval[]): Map<string, number> {
+  const attribution = new Map<string, number>();
+
+  if (intervals.length === 0) return attribution;
+
+  // Sanitize intervals (cap unreasonable durations)
+  const sanitized = intervals.map((iv) => {
+    const duration = iv.endTs - iv.startTs;
+    if (duration <= MAX_SPAN_DURATION_MS) {
+      return iv;
+    }
+    return { ...iv, endTs: iv.startTs + MAX_SPAN_DURATION_MS };
+  });
+
+  // Collect all unique time points
+  const timePoints = new Set<number>();
+  for (const iv of sanitized) {
+    timePoints.add(iv.startTs);
+    timePoints.add(iv.endTs);
+  }
+  const sortedTimes = Array.from(timePoints).sort((a, b) => a - b);
+
+  // For each time segment, split duration among active categories
+  for (let i = 0; i < sortedTimes.length - 1; i++) {
+    const segStart = sortedTimes[i];
+    const segEnd = sortedTimes[i + 1];
+    const segDuration = segEnd - segStart;
+
+    // Find all intervals active during this segment
+    const activeCategories = new Set<string>();
+    for (const iv of sanitized) {
+      if (iv.startTs <= segStart && segEnd <= iv.endTs) {
+        activeCategories.add(iv.category);
+      }
+    }
+
+    if (activeCategories.size === 0) continue;
+
+    // Split evenly among active categories
+    const share = segDuration / activeCategories.size;
+    for (const cat of activeCategories) {
+      attribution.set(cat, (attribution.get(cat) ?? 0) + share);
+    }
+  }
+
+  return attribution;
+}
 
 function mergeIntervals(spans: Array<{ startTs: number; endTs: number; durationMs?: number }>): number {
   if (spans.length === 0) return 0;
@@ -520,9 +583,11 @@ export class Repository {
     }
     const activeDurationMs = mergeIntervals(allIntervals);
 
-    const timeBreakdown: AggregateData["timeBreakdown"] = [];
+    // Build tagged intervals for proportional attribution
+    // This ensures pctOfSession sums to 100% even when categories overlap
+    const taggedIntervals: TaggedInterval[] = [];
 
-    // Group LLM intervals by model and compute wall clock time
+    // Group LLM intervals by model
     const llmGroups = new Map<string, typeof llmIntervalRows>();
     for (const row of llmIntervalRows) {
       const key = row.model ?? "unknown";
@@ -531,16 +596,52 @@ export class Repository {
       llmGroups.set(key, group);
     }
 
+    // Build category names and add to tagged intervals
+    const llmCategoryNames = new Map<string, string>();
     for (const [model, rows] of llmGroups) {
-      const intervals = rows.map((r) => ({ startTs: r.start_ts, endTs: r.end_ts, durationMs: r.duration_ms }));
-      const wallClockMs = mergeIntervals(intervals);
+      const categoryName = model !== "unknown" ? `LLM (${model.split("-").slice(0, 3).join("-")})` : "LLM";
+      llmCategoryNames.set(model, categoryName);
+      for (const r of rows) {
+        taggedIntervals.push({ startTs: r.start_ts, endTs: r.end_ts, category: categoryName });
+      }
+    }
+
+    // Group tool intervals
+    const toolGroups = new Map<string, typeof toolIntervalRows>();
+    for (const row of toolIntervalRows) {
+      const key = `${row.tool_name}|${row.tool_family}|${row.mcp_server ?? ""}`;
+      const group = toolGroups.get(key) ?? [];
+      group.push(row);
+      toolGroups.set(key, group);
+    }
+
+    const toolCategoryNames = new Map<string, string>();
+    for (const [key, rows] of toolGroups) {
+      const first = rows[0];
+      const categoryName = first.mcp_server ? `${first.mcp_server}::${first.tool_name}` : first.tool_name;
+      toolCategoryNames.set(key, categoryName);
+      for (const r of rows) {
+        taggedIntervals.push({ startTs: r.start_ts, endTs: r.end_ts, category: categoryName });
+      }
+    }
+
+    // Compute proportional attribution (for pctOfSession that sums to 100%)
+    const proportionalAttribution = attributeProportional(taggedIntervals);
+
+    const timeBreakdown: AggregateData["timeBreakdown"] = [];
+
+    // Build LLM breakdown entries
+    for (const [model, rows] of llmGroups) {
       // Cap individual durations to avoid idle time skewing averages
       const sanitizedDurations = rows.map((r) => Math.min(r.duration_ms, MAX_SPAN_DURATION_MS));
       const totalMs = sanitizedDurations.reduce((sum, d) => sum + d, 0);
       const errors = rows.filter((r) => r.status === "error").length;
 
+      const categoryName = llmCategoryNames.get(model)!;
+      const wallClockMs = proportionalAttribution.get(categoryName) ?? 0;
+
       timeBreakdown.push({
-        name: model !== "unknown" ? `LLM (${model.split("-").slice(0, 3).join("-")})` : "LLM",
+        name: categoryName,
         type: "llm",
         calls: rows.length,
         totalMs,
@@ -552,26 +653,19 @@ export class Repository {
       });
     }
 
-    // Group tool intervals and compute wall clock time
-    const toolGroups = new Map<string, typeof toolIntervalRows>();
-    for (const row of toolIntervalRows) {
-      const key = `${row.tool_name}|${row.tool_family}|${row.mcp_server ?? ""}`;
-      const group = toolGroups.get(key) ?? [];
-      group.push(row);
-      toolGroups.set(key, group);
-    }
-
-    for (const [, rows] of toolGroups) {
+    // Build tool breakdown entries
+    for (const [key, rows] of toolGroups) {
       const first = rows[0];
-      const intervals = rows.map((r) => ({ startTs: r.start_ts, endTs: r.end_ts, durationMs: r.duration_ms }));
-      const wallClockMs = mergeIntervals(intervals);
       // Cap individual durations to avoid idle time skewing averages
       const durations = rows.map((r) => Math.min(r.duration_ms, MAX_SPAN_DURATION_MS)).sort((a, b) => a - b);
       const totalMs = durations.reduce((sum, d) => sum + d, 0);
       const errors = rows.filter((r) => r.status === "error").length;
 
+      const categoryName = toolCategoryNames.get(key)!;
+      const wallClockMs = proportionalAttribution.get(categoryName) ?? 0;
+
       timeBreakdown.push({
-        name: first.mcp_server ? `${first.mcp_server}::${first.tool_name}` : first.tool_name,
+        name: categoryName,
         type: first.tool_family === "mcp" ? "mcp" : "builtin",
         calls: rows.length,
         totalMs,
@@ -583,7 +677,7 @@ export class Repository {
       });
     }
 
-    // Sort by wallClockMs DESC (now sorting by actual time contribution)
+    // Sort by wallClockMs DESC (proportional contribution to session time)
     timeBreakdown.sort((a, b) => b.wallClockMs - a.wallClockMs);
 
     // Update durationMs with the computed active duration
@@ -746,5 +840,166 @@ export class Repository {
 
     stats.sort((a, b) => b.totalDurationMs - a.totalDurationMs);
     return stats;
+  }
+
+  getMessages(sessionIds: string[], startTime?: number, endTime?: number): MessagesResponse {
+    if (sessionIds.length === 0) {
+      return { messages: [], agents: [] };
+    }
+
+    const placeholders = sessionIds.map(() => "?").join(",");
+    let query = `
+      SELECT e.event_id, e.session_id, e.agent_id, e.ts, e.raw_type, e.raw_json,
+             a.kind as agent_kind
+      FROM events e
+      JOIN agents a ON e.agent_id = a.agent_id
+      WHERE e.session_id IN (${placeholders})
+        AND e.raw_type IN ('user', 'assistant', 'result')
+    `;
+
+    const params: (string | number)[] = [...sessionIds];
+
+    if (startTime !== undefined && endTime !== undefined) {
+      query += ` AND e.ts >= ? AND e.ts <= ?`;
+      params.push(startTime, endTime);
+    }
+
+    query += ` ORDER BY e.ts ASC`;
+
+    const stmt = this.db.prepare(query);
+    const rows = stmt.all(...params) as Array<{
+      event_id: string;
+      session_id: string;
+      agent_id: string;
+      ts: number;
+      raw_type: string;
+      raw_json: string;
+      agent_kind: "main" | "subagent";
+    }>;
+
+    const messages: ChatMessage[] = [];
+    const agentMap = new Map<string, AgentInfo>();
+
+    for (const row of rows) {
+      const parsed = this.parseEventToMessage(row);
+      if (parsed) {
+        messages.push(parsed);
+
+        if (!agentMap.has(row.agent_id)) {
+          agentMap.set(row.agent_id, {
+            agentId: row.agent_id,
+            kind: row.agent_kind,
+            label: row.agent_kind === "main" ? "Main" : `Subagent`,
+          });
+        }
+      }
+    }
+
+    return {
+      messages,
+      agents: Array.from(agentMap.values()),
+    };
+  }
+
+  private parseEventToMessage(row: {
+    event_id: string;
+    agent_id: string;
+    ts: number;
+    raw_type: string;
+    raw_json: string;
+    agent_kind: "main" | "subagent";
+  }): ChatMessage | null {
+    try {
+      const raw = JSON.parse(row.raw_json);
+
+      if (row.raw_type === "user") {
+        const content = this.extractContentBlocks(raw.message?.content ?? []);
+        return {
+          eventId: row.event_id,
+          agentId: row.agent_id,
+          agentKind: row.agent_kind,
+          ts: row.ts,
+          role: "user",
+          content,
+        };
+      }
+
+      if (row.raw_type === "assistant") {
+        const content = this.extractContentBlocks(raw.message?.content ?? []);
+        return {
+          eventId: row.event_id,
+          agentId: row.agent_id,
+          agentKind: row.agent_kind,
+          ts: row.ts,
+          role: "assistant",
+          content,
+        };
+      }
+
+      if (row.raw_type === "result") {
+        const toolResult = raw.toolUseResult ?? raw.tool_result ?? {};
+        const output = this.extractToolResultOutput(toolResult.content);
+        const content: ChatContentBlock[] = [{
+          type: "tool_result",
+          toolId: toolResult.tool_use_id ?? "",
+          output,
+          isError: toolResult.is_error === true,
+        }];
+        return {
+          eventId: row.event_id,
+          agentId: row.agent_id,
+          agentKind: row.agent_kind,
+          ts: row.ts,
+          role: "assistant",
+          content,
+        };
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private extractContentBlocks(content: unknown[]): ChatContentBlock[] {
+    if (!Array.isArray(content)) return [];
+
+    const blocks: ChatContentBlock[] = [];
+
+    for (const item of content) {
+      if (typeof item !== "object" || item === null) continue;
+      const block = item as Record<string, unknown>;
+
+      if (block.type === "text" && typeof block.text === "string") {
+        blocks.push({ type: "text", text: block.text });
+      } else if (block.type === "thinking" && typeof block.thinking === "string") {
+        blocks.push({ type: "thinking", text: block.thinking });
+      } else if (block.type === "tool_use") {
+        blocks.push({
+          type: "tool_use",
+          toolName: (block.name as string) ?? "unknown",
+          toolId: (block.id as string) ?? "",
+          input: block.input ?? {},
+        });
+      }
+    }
+
+    return blocks;
+  }
+
+  private extractToolResultOutput(content: unknown): string {
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      return content
+        .map((c) => {
+          if (typeof c === "string") return c;
+          if (typeof c === "object" && c !== null && "text" in c) {
+            return (c as { text: string }).text;
+          }
+          return JSON.stringify(c);
+        })
+        .join("\n");
+    }
+    return JSON.stringify(content);
   }
 }
