@@ -483,9 +483,26 @@ body {
 }
 
 .inline-tool {
-  font-family: monospace;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.375rem;
   font-size: 0.75rem;
+}
+
+.tool-name-part {
+  font-family: monospace;
   color: #60a5fa;
+  font-weight: 500;
+}
+
+.tool-detail-part {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.tool-more {
+  color: var(--text-secondary);
+  font-size: 0.625rem;
 }
 
 .inline-result {
