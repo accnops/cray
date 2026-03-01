@@ -95,12 +95,13 @@ export function ChatSidebar({ sessionIds, timeRange }: ChatSidebarProps) {
   return (
     <div className="chat-sidebar" style={{ width }}>
       <div className="sidebar-resize-handle" onMouseDown={handleMouseDown} />
-      <div className="sidebar-header">
-        <h3>Chat</h3>
-        <button className="collapse-btn" onClick={() => setCollapsed(true)} title="Collapse">
-          ▶
-        </button>
-      </div>
+      <button
+        className="collapse-btn sidebar-collapse-btn"
+        onClick={() => setCollapsed(true)}
+        title="Collapse"
+      >
+        ▶
+      </button>
 
       {loading ? (
         <div className="sidebar-loading">Loading...</div>
