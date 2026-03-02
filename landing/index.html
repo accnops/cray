@@ -32,9 +32,49 @@
     }
 
     .container {
-      max-width: 720px;
+      max-width: 900px;
       margin: 0 auto;
       padding: 4rem 2rem;
+    }
+
+    /* Screenshot */
+    .screenshot-section {
+      margin-bottom: 4rem;
+    }
+
+    .screenshot-wrapper {
+      position: relative;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .screenshot-wrapper img {
+      width: 100%;
+      display: block;
+    }
+
+    .screenshot-labels {
+      display: flex;
+      justify-content: space-around;
+      margin-top: 1rem;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .screenshot-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+
+    .screenshot-label .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--claude);
     }
 
     /* Hero */
@@ -229,6 +269,18 @@
         A local profiler and debugger for Claude Code sessions.
         Visualize token usage and tool calls.
       </p>
+    </section>
+
+    <!-- Screenshot -->
+    <section class="screenshot-section">
+      <div class="screenshot-wrapper">
+        <img src="screenshot.png" alt="cray dashboard showing token usage chart, time breakdown, and chat history">
+      </div>
+      <div class="screenshot-labels">
+        <div class="screenshot-label"><span class="dot"></span> Token usage over time</div>
+        <div class="screenshot-label"><span class="dot"></span> Time breakdown by tool</div>
+        <div class="screenshot-label"><span class="dot"></span> Chat history</div>
+      </div>
     </section>
 
     <!-- Install -->
