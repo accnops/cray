@@ -10,9 +10,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-13
-            target: darwin-x64
-          - os: macos-14
+          - os: macos-latest
             target: darwin-arm64
           - os: ubuntu-latest
             target: linux-x64
@@ -68,7 +66,6 @@ jobs:
       - name: Prepare binaries
         run: |
           mkdir -p release
-          cp artifacts/cray-darwin-x64/cray-darwin-x64 release/
           cp artifacts/cray-darwin-arm64/cray-darwin-arm64 release/
           cp artifacts/cray-linux-x64/cray-linux-x64 release/
           chmod +x release/*
