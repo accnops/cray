@@ -6,7 +6,7 @@ set -e
 
 REPO="accnops/cray"
 INSTALL_DIR="/usr/local/bin"
-BINARY_NAME="cray"
+INSTALL_LIB="/usr/local/lib/cray"
 
 # Detect OS
 OS="$(uname -s)"
@@ -30,33 +30,38 @@ PLATFORM="${OS}-${ARCH}"
 
 echo "Installing cray for ${PLATFORM}..."
 
-# Get latest release URL from GitHub
-DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/cray-${PLATFORM}"
+# Get latest release tarball URL from GitHub
+DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/cray-${PLATFORM}.tar.gz"
 
 # Create temp directory
 TMP_DIR="$(mktemp -d)"
 trap "rm -rf ${TMP_DIR}" EXIT
 
-# Download binary
+# Download and extract
 echo "Downloading from ${DOWNLOAD_URL}..."
 if command -v curl > /dev/null; then
-  curl -fsSL "$DOWNLOAD_URL" -o "${TMP_DIR}/${BINARY_NAME}"
+  curl -fsSL "$DOWNLOAD_URL" | tar -xz -C "${TMP_DIR}"
 elif command -v wget > /dev/null; then
-  wget -q "$DOWNLOAD_URL" -O "${TMP_DIR}/${BINARY_NAME}"
+  wget -qO- "$DOWNLOAD_URL" | tar -xz -C "${TMP_DIR}"
 else
   echo "Error: curl or wget required"
   exit 1
 fi
 
-# Make executable
-chmod +x "${TMP_DIR}/${BINARY_NAME}"
-
-# Install
-if [ -w "$INSTALL_DIR" ]; then
-  mv "${TMP_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
+# Install binary and web assets
+if [ -w "$INSTALL_DIR" ] && [ -w "$(dirname $INSTALL_LIB)" ]; then
+  rm -rf "${INSTALL_LIB}"
+  mkdir -p "${INSTALL_LIB}"
+  cp -r "${TMP_DIR}/cray-${PLATFORM}/web" "${INSTALL_LIB}/"
+  cp "${TMP_DIR}/cray-${PLATFORM}/cray" "${INSTALL_DIR}/cray"
+  chmod +x "${INSTALL_DIR}/cray"
 else
   echo "Installing to ${INSTALL_DIR} (requires sudo)..."
-  sudo mv "${TMP_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
+  sudo rm -rf "${INSTALL_LIB}"
+  sudo mkdir -p "${INSTALL_LIB}"
+  sudo cp -r "${TMP_DIR}/cray-${PLATFORM}/web" "${INSTALL_LIB}/"
+  sudo cp "${TMP_DIR}/cray-${PLATFORM}/cray" "${INSTALL_DIR}/cray"
+  sudo chmod +x "${INSTALL_DIR}/cray"
 fi
 
 echo ""

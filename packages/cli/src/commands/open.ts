@@ -81,6 +81,13 @@ async function findWebRoot(): Promise<string | undefined> {
     return exeWebPath;
   }
 
+  // Try system install location
+  const sysPath = "/usr/local/lib/cray/web";
+  const sysFile = Bun.file(join(sysPath, "index.html"));
+  if (await sysFile.exists()) {
+    return sysPath;
+  }
+
   return undefined;
 }
 

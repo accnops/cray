@@ -45,13 +45,20 @@ jobs:
         run: cd packages/web && pnpm build
 
       - name: Compile binary
-        run: bun build packages/cli/src/index.ts --compile --outfile cray-${{ matrix.target }}
+        run: bun build packages/cli/src/index.ts --compile --outfile cray
+
+      - name: Package release
+        run: |
+          mkdir -p cray-${{ matrix.target }}
+          cp cray cray-${{ matrix.target }}/
+          cp -r packages/web/dist cray-${{ matrix.target }}/web
+          tar -czf cray-${{ matrix.target }}.tar.gz cray-${{ matrix.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: cray-${{ matrix.target }}
-          path: cray-${{ matrix.target }}
+          path: cray-${{ matrix.target }}.tar.gz
 
   release:
     needs: build
@@ -65,13 +72,12 @@ jobs:
         with:
           path: artifacts
 
-      - name: Prepare binaries
+      - name: Prepare release files
         run: |
           mkdir -p release
-          cp artifacts/cray-darwin-arm64/cray-darwin-arm64 release/
-          cp artifacts/cray-darwin-x64/cray-darwin-x64 release/
-          cp artifacts/cray-linux-x64/cray-linux-x64 release/
-          chmod +x release/*
+          cp artifacts/cray-darwin-arm64/cray-darwin-arm64.tar.gz release/
+          cp artifacts/cray-darwin-x64/cray-darwin-x64.tar.gz release/
+          cp artifacts/cray-linux-x64/cray-linux-x64.tar.gz release/
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
