@@ -13,5 +13,6 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
+    assetsInlineLimit: 15000, // Inline fonts as base64 (< 15KB)
   },
 });

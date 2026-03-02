@@ -1,4 +1,4 @@
-import type { ChatMessage, AgentInfo } from "@ccray/shared";
+import type { ChatMessage, AgentInfo } from "@cray/shared";
 import { ChatMessageItem } from "./ChatMessageItem";
 
 interface AgentPaneProps {

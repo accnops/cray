@@ -96,14 +96,15 @@ export type ChatContentBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
   | { type: "tool_use"; toolName: string; toolId: string; input: unknown }
-  | { type: "tool_result"; toolId: string; output: string; isError: boolean };
+  | { type: "tool_result"; toolId: string; output: string; isError: boolean }
+  | { type: "system"; text: string };
 
 export interface ChatMessage {
   eventId: string;
   agentId: string;
   agentKind: AgentKind;
   ts: number;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: ChatContentBlock[];
 }
 
@@ -116,4 +117,22 @@ export interface AgentInfo {
 export interface MessagesResponse {
   messages: ChatMessage[];
   agents: AgentInfo[];
+}
+
+export interface DiscoveredProjectSummary {
+  projectPath: string;
+  projectName: string;
+  sessionCount: number;
+}
+
+export interface AppConfig {
+  mode: "discovery" | "explicit";
+  projectPath?: string;
+  projectName?: string;
+}
+
+export interface LoadProjectResponse {
+  success: boolean;
+  sessionCount: number;
+  error?: string;
 }

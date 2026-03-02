@@ -8,7 +8,7 @@ describe("discoverSessions", () => {
   let testDir: string;
 
   beforeAll(async () => {
-    testDir = await mkdtemp(join(tmpdir(), "ccray-test-"));
+    testDir = await mkdtemp(join(tmpdir(), "cray-test-"));
 
     // Create fake session files
     await writeFile(join(testDir, "abc123.jsonl"), "{}");

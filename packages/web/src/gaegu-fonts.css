@@ -1,0 +1,14 @@
+/* Gaegu Font - Embedded */
+@font-face {
+  font-family: 'Gaegu';
+  font-style: normal;
+  font-weight: 400;
+  src: url('./gaegu-regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Gaegu';
+  font-style: normal;
+  font-weight: 700;
+  src: url('./gaegu-bold.woff2') format('woff2');
+}

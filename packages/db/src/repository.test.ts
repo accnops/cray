@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { createSchema } from "./schema.js";
 import { Repository } from "./repository.js";
-import type { Session, Agent, Span } from "@ccray/shared";
+import type { Session, Agent, Span } from "@cray/shared";
 
 describe("Repository", () => {
   let db: Database;

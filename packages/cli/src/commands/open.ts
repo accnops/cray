@@ -1,10 +1,68 @@
 import { Database } from "bun:sqlite";
 import { homedir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, basename } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { createSchema, Repository } from "@ccray/db";
-import { createApp } from "@ccray/server";
-import { ingestAll } from "@ccray/parser";
+import { createSchema, Repository } from "@cray/db";
+import { createApp } from "@cray/server";
+import { ingestAll } from "@cray/parser";
+
+interface TimeBreakdownEntry {
+  name: string;
+  type: "llm" | "builtin" | "mcp";
+  calls: number;
+  totalMs: number;
+  wallClockMs: number;
+  pctOfSession: number;
+  avgMs: number;
+  p95Ms: number;
+  errors: number;
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${(ms / 60000).toFixed(1)}m`;
+}
+
+function printTimeBreakdown(breakdown: TimeBreakdownEntry[], totalDurationMs: number): void {
+  if (breakdown.length === 0) {
+    console.log("No time breakdown data available.");
+    return;
+  }
+
+  // Column headers
+  const headers = ["Name", "Type", "Calls", "Wall Clock", "% Session", "Avg", "P95"];
+
+  // Build rows
+  const rows = breakdown.map(entry => [
+    entry.name,
+    entry.type,
+    entry.calls.toString(),
+    formatDuration(entry.wallClockMs),
+    `${entry.pctOfSession.toFixed(1)}%`,
+    formatDuration(entry.avgMs),
+    formatDuration(entry.p95Ms),
+  ]);
+
+  // Calculate column widths
+  const colWidths = headers.map((h, i) =>
+    Math.max(h.length, ...rows.map(r => r[i].length))
+  );
+
+  // Print header
+  const headerLine = headers.map((h, i) => h.padEnd(colWidths[i])).join("  ");
+  console.log(`\n${headerLine}`);
+  console.log("-".repeat(headerLine.length));
+
+  // Print rows
+  for (const row of rows) {
+    console.log(row.map((cell, i) => cell.padEnd(colWidths[i])).join("  "));
+  }
+
+  // Print total
+  console.log("-".repeat(headerLine.length));
+  console.log(`Total active time: ${formatDuration(totalDurationMs)}`);
+}
 
 async function findWebRoot(): Promise<string | undefined> {
   // Try relative to current working directory (development)
@@ -30,34 +88,65 @@ export interface OpenOptions {
   port?: number;
   noBrowser?: boolean;
   reindex?: boolean;
+  timeBreakdown?: boolean;
 }
 
 export async function openCommand(
   path: string | undefined,
   options: OpenOptions
 ): Promise<void> {
+  // --time-breakdown requires a path
+  if (options.timeBreakdown && !path) {
+    console.error("Error: --time-breakdown requires a path argument");
+    process.exit(1);
+  }
+
   const port = options.port ? parseInt(options.port as unknown as string, 10) : 3333;
-  const targetPath = path ?? join(homedir(), ".claude", "projects");
-  const cacheDir = join(homedir(), ".cache", "ccray");
-  const dbPath = join(cacheDir, "ccray.db");
+  const claudeDir = join(homedir(), ".claude");
+  const explicitPath = path !== undefined;
+  const cacheDir = join(homedir(), ".cache", "cray");
+  const dbPath = join(cacheDir, "cray.db");
 
   // Ensure cache directory exists
   await mkdir(cacheDir, { recursive: true });
 
-  console.log(`Scanning ${targetPath}...`);
-
   const db = new Database(dbPath);
 
-  // Ingest sessions
-  const sessions = await ingestAll(db, targetPath, { reindex: options.reindex });
+  let appMode: "discovery" | "explicit" = "discovery";
+  let projectPath: string | undefined;
+  let projectName: string | undefined;
 
-  if (sessions.length === 0) {
-    console.log("No sessions found.");
-    db.close();
-    return;
+  if (explicitPath) {
+    // Explicit path: ingest immediately (current behavior)
+    appMode = "explicit";
+    projectPath = path;
+    projectName = basename(path);
+
+    console.log(`Scanning ${projectPath}...`);
+    const sessions = await ingestAll(db, projectPath, { reindex: options.reindex });
+
+    if (sessions.length === 0) {
+      console.log("No sessions found.");
+      db.close();
+      return;
+    }
+
+    // Handle --time-breakdown option
+    if (options.timeBreakdown) {
+      const repo = new Repository(db);
+      const sessionIds = sessions.map(s => s.sessionId);
+      const aggregate = repo.getAggregate(sessionIds);
+
+      printTimeBreakdown(aggregate.timeBreakdown, aggregate.totals.durationMs);
+      db.close();
+      return;
+    }
+
+    console.log(`\nIngested ${sessions.length} session(s)`);
+  } else {
+    console.log("Starting in project selector mode...");
+    createSchema(db);
   }
-
-  console.log(`\nIngested ${sessions.length} session(s)`);
 
   const repo = new Repository(db);
   const webRoot = await findWebRoot();
@@ -68,7 +157,13 @@ export async function openCommand(
     console.log("Warning: Web UI not found. API-only mode.");
   }
 
-  const app = createApp(repo, { webRoot });
+  const app = createApp(db, repo, {
+    webRoot,
+    mode: appMode,
+    claudeDir: explicitPath ? undefined : claudeDir,
+    projectPath,
+    projectName,
+  });
 
   console.log(`\nStarting server on http://127.0.0.1:${port}`);
 

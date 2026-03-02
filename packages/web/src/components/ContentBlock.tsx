@@ -1,4 +1,6 @@
-import type { ChatContentBlock } from "@ccray/shared";
+import type { ChatContentBlock } from "@cray/shared";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface ContentBlockProps {
   block: ChatContentBlock;
@@ -6,7 +8,11 @@ interface ContentBlockProps {
 
 export function ContentBlock({ block }: ContentBlockProps) {
   if (block.type === "text") {
-    return <div className="content-block text-block">{block.text}</div>;
+    return (
+      <div className="content-block text-block">
+        <Markdown remarkPlugins={[remarkGfm]}>{block.text}</Markdown>
+      </div>
+    );
   }
 
   if (block.type === "thinking") {
@@ -33,6 +39,14 @@ export function ContentBlock({ block }: ContentBlockProps) {
     return (
       <div className={`content-block tool-result-block ${block.isError ? "error" : ""}`}>
         {block.output}
+      </div>
+    );
+  }
+
+  if (block.type === "system") {
+    return (
+      <div className="content-block system-block">
+        {block.text}
       </div>
     );
   }

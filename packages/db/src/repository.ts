@@ -9,7 +9,7 @@ import type {
   ChatContentBlock,
   AgentInfo,
   MessagesResponse,
-} from "@ccray/shared";
+} from "@cray/shared";
 
 export interface ToolStats {
   toolName: string;
@@ -918,7 +918,25 @@ export class Repository {
       }
 
       if (row.raw_type === "user") {
-        const content = this.extractContentBlocks(raw.message?.content ?? []);
+        // Handle compaction messages - show as system message
+        if (raw.isCompactSummary === true) {
+          return {
+            eventId: row.event_id,
+            agentId: row.agent_id,
+            agentKind: row.agent_kind,
+            ts: row.ts,
+            role: "system",
+            content: [{ type: "system", text: "Context compacted" }],
+          };
+        }
+
+        // Skip task notifications (background task completion messages)
+        const messageContent = raw.message?.content;
+        if (typeof messageContent === "string" && messageContent.trim().startsWith("<task-notification>")) {
+          return null;
+        }
+
+        const content = this.extractContentBlocks(messageContent ?? []);
         // Skip user messages that only contain tool_result (automated responses, not real user input)
         const hasRealContent = content.some(c => c.type === "text" || c.type === "tool_use");
         if (!hasRealContent && content.length > 0) {

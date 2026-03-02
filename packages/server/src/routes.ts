@@ -1,16 +1,67 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
-import type { Repository } from "@ccray/db";
+import type { Database } from "bun:sqlite";
+import type { Repository } from "@cray/db";
+import { discoverProjects, ingestAll, type DiscoveredProject } from "@cray/parser";
+import type { DiscoveredProjectSummary, AppConfig, LoadProjectResponse } from "@cray/shared";
 
 export interface AppOptions {
   webRoot?: string;
+  mode: "discovery" | "explicit";
+  claudeDir?: string;
+  projectPath?: string;
+  projectName?: string;
 }
 
-export function createApp(repo: Repository, options: AppOptions = {}) {
+export function createApp(db: Database, repo: Repository, options: AppOptions) {
   const app = new Hono();
 
   app.use("/api/*", cors());
+
+  // Config endpoint
+  app.get("/api/config", (c) => {
+    const config: AppConfig = {
+      mode: options.mode,
+      projectPath: options.projectPath,
+      projectName: options.projectName,
+    };
+    return c.json(config);
+  });
+
+  // Projects list (discovery mode)
+  app.get("/api/projects", async (c) => {
+    if (!options.claudeDir) {
+      return c.json([]);
+    }
+    const projects = await discoverProjects(options.claudeDir);
+    const summaries: DiscoveredProjectSummary[] = projects.map((p: DiscoveredProject) => ({
+      projectPath: p.projectPath,
+      projectName: p.projectName,
+      sessionCount: p.sessions.length,
+    }));
+    return c.json(summaries);
+  });
+
+  // Load project (discovery mode)
+  app.post("/api/projects/load", async (c) => {
+    const { projectPath } = await c.req.json<{ projectPath: string }>();
+    try {
+      const sessions = await ingestAll(db, projectPath);
+      const response: LoadProjectResponse = {
+        success: true,
+        sessionCount: sessions.length,
+      };
+      return c.json(response);
+    } catch (e) {
+      const response: LoadProjectResponse = {
+        success: false,
+        sessionCount: 0,
+        error: e instanceof Error ? e.message : "Unknown error",
+      };
+      return c.json(response, 500);
+    }
+  });
 
   // Sessions
   app.get("/api/sessions", (c) => {

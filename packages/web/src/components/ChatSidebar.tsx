@@ -1,26 +1,48 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import type { MessagesResponse, AgentInfo } from "@ccray/shared";
+import type { MessagesResponse, AgentInfo } from "@cray/shared";
 import { useApi } from "../hooks/useApi";
 import { ChatMessageItem } from "./ChatMessageItem";
 
 interface ChatSidebarProps {
   sessionIds: string[];
   timeRange: { start: number; end: number } | null;
+  onIndicatorChange?: (ts: number | null) => void;
 }
 
 const DEFAULT_WIDTH = 400;
 const MIN_WIDTH = 300;
 const MAX_WIDTH = 600;
-const STORAGE_KEY = "ccray-sidebar-width";
+const STORAGE_KEY = "cray-sidebar-width";
 
-export function ChatSidebar({ sessionIds, timeRange }: ChatSidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+export function ChatSidebar({ sessionIds, timeRange, onIndicatorChange }: ChatSidebarProps) {
   const [width, setWidth] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
 
   const isResizing = useRef(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const dotRef = useRef<HTMLDivElement>(null);
+
+  // Handle scroll to update indicator timestamp
+  const handleScroll = useCallback(() => {
+    if (!dotRef.current || !listRef.current) return;
+
+    const dotRect = dotRef.current.getBoundingClientRect();
+    const listRect = listRef.current.getBoundingClientRect();
+    const dotCenterY = dotRect.top + dotRect.height / 2;
+    // Sample from within the message list, not at the triangle position
+    const sampleX = listRect.left + 50;
+
+    // Find element at dot's Y position but inside the message list
+    const el = document.elementFromPoint(sampleX, dotCenterY);
+    const messageEl = el?.closest('.chat-message');
+
+    if (messageEl) {
+      const ts = parseInt(messageEl.getAttribute('data-ts') || '0', 10);
+      if (ts > 0) onIndicatorChange?.(ts);
+    }
+  }, [onIndicatorChange]);
 
   // Build query string
   const queryString = useMemo(() => {
@@ -48,6 +70,15 @@ export function ChatSidebar({ sessionIds, timeRange }: ChatSidebarProps) {
 
   // Check if we have multiple agents (to decide whether to show agent labels)
   const hasMultipleAgents = data && data.agents.length > 1;
+
+  // Call handleScroll on mount and when data changes to set initial indicator
+  useEffect(() => {
+    if (data && data.messages.length > 0) {
+      // Small delay to ensure DOM is rendered
+      const timeoutId = setTimeout(handleScroll, 50);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [data, handleScroll]);
 
   // Resize handling
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -82,46 +113,32 @@ export function ChatSidebar({ sessionIds, timeRange }: ChatSidebarProps) {
     };
   }, [width]);
 
-  if (collapsed) {
-    return (
-      <div className="chat-sidebar collapsed">
-        <button className="collapse-btn" onClick={() => setCollapsed(false)} title="Expand">
-          ◀
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="chat-sidebar" style={{ width }}>
       <div className="sidebar-resize-handle" onMouseDown={handleMouseDown} />
-      <button
-        className="collapse-btn sidebar-collapse-btn"
-        onClick={() => setCollapsed(true)}
-        title="Collapse"
-      >
-        ▶
-      </button>
 
       {loading ? (
         <div className="sidebar-loading">Loading...</div>
       ) : !data || data.messages.length === 0 ? (
         <div className="sidebar-empty">No messages in selected range</div>
       ) : (
-        <div className="messages-list">
-          {data.messages.map((msg) => {
-            // Only show agent label for subagents when multiple agents exist
-            const agent = agentLookup.get(msg.agentId);
-            const showLabel = hasMultipleAgents && agent?.kind === "subagent";
-            return (
-              <ChatMessageItem
-                key={msg.eventId}
-                message={msg}
-                agentLabel={showLabel ? agent?.label : undefined}
-              />
-            );
-          })}
-        </div>
+        <>
+          <div ref={dotRef} className="scroll-indicator-dot" />
+          <div ref={listRef} className="messages-list" onScroll={handleScroll}>
+            {data.messages.map((msg) => {
+              // Only show agent label for subagents when multiple agents exist
+              const agent = agentLookup.get(msg.agentId);
+              const showLabel = hasMultipleAgents && agent?.kind === "subagent";
+              return (
+                <ChatMessageItem
+                  key={msg.eventId}
+                  message={msg}
+                  agentLabel={showLabel ? agent?.label : undefined}
+                />
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );

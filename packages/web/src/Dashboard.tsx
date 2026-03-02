@@ -1,10 +1,17 @@
 import { useState, useEffect, useMemo } from "react";
-import type { Session } from "@ccray/shared";
+import type { Session } from "@cray/shared";
 import { useApi } from "./hooks/useApi";
 import { SessionFilter } from "./components/SessionFilter";
-import { TokensChart } from "./components/TokensChart";
+import { HandDrawnChart } from "./components/HandDrawnChart";
 import { TimeBreakdown } from "./components/TimeBreakdown";
 import { ChatSidebar } from "./components/ChatSidebar";
+import { Logo } from "./components/Logo";
+
+interface DashboardProps {
+  projectName?: string;
+  showBackButton?: boolean;
+  onBack?: () => void;
+}
 
 function getProjectName(path: string): string {
   if (!path) return "";
@@ -45,10 +52,11 @@ interface AggregateData {
   }>;
 }
 
-export function Dashboard() {
+export function Dashboard({ projectName: propProjectName, showBackButton, onBack }: DashboardProps) {
   const { data: sessions } = useApi<Session[]>("/api/sessions");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [timeRange, setTimeRange] = useState<{ start: number; end: number } | null>(null);
+  const [indicatorTs, setIndicatorTs] = useState<number | null>(null);
 
   // Select all sessions by default
   useEffect(() => {
@@ -58,6 +66,9 @@ export function Dashboard() {
   }, [sessions]);
 
   const projectTitle = useMemo(() => {
+    // Use prop if provided
+    if (propProjectName) return propProjectName;
+
     if (!sessions || selectedIds.length === 0) return null;
     const selected = sessions.filter((s) => selectedIds.includes(s.sessionId));
     const projects = [...new Set(selected.map((s) => getProjectName(s.projectPath)))].filter(Boolean);
@@ -65,7 +76,7 @@ export function Dashboard() {
     if (projects.length === 1) return projects[0];
     if (projects.length <= 3) return projects.join(", ");
     return `${projects.length} projects`;
-  }, [sessions, selectedIds]);
+  }, [propProjectName, sessions, selectedIds]);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -95,61 +106,67 @@ export function Dashboard() {
 
   return (
     <div className="dashboard">
-      <header className="dashboard-header">
-        <div className="header-left">
-          <h1>ccray</h1>
-        </div>
-        <div className="header-center">
-          {projectTitle && <span className="project-title">{projectTitle}</span>}
-          <SessionFilter
-            sessions={sessions}
-            selectedIds={selectedIds}
-            onChange={setSelectedIds}
-          />
-        </div>
-        <div className="header-right">
-          {aggregate && (
-            <div className="totals">
-              {timeRange && (
-                <span className="total-item date-range">
-                  {formatDateRange(timeRange.start, timeRange.end)}
-                </span>
-              )}
-              <span className="total-item">
-                <strong>{formatNumber(aggregate.totals.inputTokens + aggregate.totals.outputTokens)}</strong> tokens
-              </span>
-            </div>
-          )}
-        </div>
-      </header>
-
-      <main className="dashboard-main">
-        <div className="dashboard-body">
-          <div className="main-content">
-            {loading ? (
-              <div className="loading">Loading data...</div>
-            ) : aggregate ? (
-              <>
-                <section className="panel">
-                  <h2>Tokens Over Time</h2>
-                  <TokensChart
-                    data={aggregate.tokensOverTime}
-                    onZoomChange={setTimeRange}
-                    isZoomed={timeRange !== null}
-                  />
-                </section>
-
-                <section className="panel">
-                  <h2>Time Breakdown</h2>
-                  <TimeBreakdown data={aggregate.timeBreakdown} sessionDurationMs={aggregate.totals.durationMs} />
-                </section>
-              </>
+      <div className="main-panel">
+        <header className="dashboard-header">
+          <div className="header-left">
+            {showBackButton && onBack ? (
+              <button className="back-button" onClick={onBack} title="Back to projects">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M10.5 3L5.5 8L10.5 13" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
             ) : null}
+            <Logo size={18} />
+            {projectTitle && <span className="project-title">{projectTitle}</span>}
           </div>
+          <div className="header-center">
+            <SessionFilter
+              sessions={sessions}
+              selectedIds={selectedIds}
+              onChange={setSelectedIds}
+            />
+          </div>
+          <div className="header-right">
+            {aggregate && (
+              <div className="totals">
+                {timeRange && (
+                  <span className="total-item date-range">
+                    {formatDateRange(timeRange.start, timeRange.end)}
+                  </span>
+                )}
+                <span className="total-item">
+                  <strong>{formatNumber(aggregate.totals.inputTokens + aggregate.totals.outputTokens)}</strong> tokens
+                </span>
+              </div>
+            )}
+          </div>
+        </header>
 
-          <ChatSidebar sessionIds={selectedIds} timeRange={timeRange} />
-        </div>
-      </main>
+        <main className="main-content">
+          {loading ? (
+            <div className="loading">Loading data...</div>
+          ) : aggregate ? (
+            <>
+              <section className="panel">
+                <h2>Tokens Over Time</h2>
+                <HandDrawnChart
+                  data={aggregate.tokensOverTime}
+                  onZoomChange={setTimeRange}
+                  isZoomed={timeRange !== null}
+                  indicatorTs={indicatorTs}
+                />
+              </section>
+
+              <section className="panel">
+                <h2>Time Breakdown</h2>
+                <TimeBreakdown data={aggregate.timeBreakdown} sessionDurationMs={aggregate.totals.durationMs} />
+              </section>
+            </>
+          ) : null}
+        </main>
+      </div>
+
+      <ChatSidebar sessionIds={selectedIds} timeRange={timeRange} onIndicatorChange={setIndicatorTs} />
     </div>
   );
 }

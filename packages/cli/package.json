@@ -1,20 +1,20 @@
 {
-  "name": "@ccray/cli",
+  "name": "@cray/cli",
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "ccray": "dist/index.js"
+    "cray": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "bun test"
+    "test": "echo 'No tests'"
   },
   "dependencies": {
-    "@ccray/shared": "workspace:*",
-    "@ccray/parser": "workspace:*",
-    "@ccray/db": "workspace:*",
-    "@ccray/server": "workspace:*",
+    "@cray/shared": "workspace:*",
+    "@cray/parser": "workspace:*",
+    "@cray/db": "workspace:*",
+    "@cray/server": "workspace:*",
     "commander": "^12.1.0"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
-import type { TokenUsage } from "@ccray/shared";
-import { RawEventSchema } from "@ccray/shared";
+import type { TokenUsage } from "@cray/shared";
+import { RawEventSchema } from "@cray/shared";
 
 export interface NormalizedEvent {
   eventId: string;

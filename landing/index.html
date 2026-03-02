@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>cray - Claude Code Session Analyzer</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&display=swap');
+
+    :root {
+      --bg: #08090a;
+      --bg-secondary: #0d0f10;
+      --text: #a8b0b8;
+      --text-dim: #5c6370;
+      --border: #1e2226;
+      --claude: #C15F3C;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 4rem 2rem;
+    }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+
+    .logo-title {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .logo-title .title {
+      font-family: 'Gaegu', cursive;
+      font-size: 3rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .tagline {
+      font-family: 'Gaegu', cursive;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 1rem;
+    }
+
+    .subtitle {
+      color: var(--text-dim);
+      font-size: 1.1rem;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    /* Install */
+    .install {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 2rem;
+      margin-bottom: 4rem;
+    }
+
+    .install h2 {
+      font-family: 'Gaegu', cursive;
+      font-size: 1.25rem;
+      color: var(--text);
+      margin-bottom: 1rem;
+    }
+
+    .code-block {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem 1.25rem;
+      font-family: 'SF Mono', Menlo, Monaco, monospace;
+      font-size: 0.9rem;
+      color: var(--claude);
+      overflow-x: auto;
+      margin-bottom: 1rem;
+    }
+
+    .code-block:last-child {
+      margin-bottom: 0;
+    }
+
+    .or-divider {
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      margin: 1rem 0;
+    }
+
+    /* Features */
+    .features {
+      margin-bottom: 4rem;
+    }
+
+    .feature {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .feature-icon {
+      flex-shrink: 0;
+      width: 24px;
+      height: 24px;
+      color: var(--claude);
+    }
+
+    .feature h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .feature p {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+    }
+
+    /* Usage */
+    .usage {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 2rem;
+      margin-bottom: 4rem;
+    }
+
+    .usage h2 {
+      font-family: 'Gaegu', cursive;
+      font-size: 1.25rem;
+      color: var(--text);
+      margin-bottom: 1rem;
+    }
+
+    .usage-item {
+      margin-bottom: 1.25rem;
+    }
+
+    .usage-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .usage-item .code-block {
+      margin-bottom: 0.5rem;
+    }
+
+    .usage-item p {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      padding-left: 1.25rem;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .footer a {
+      color: var(--claude);
+      text-decoration: none;
+    }
+
+    .footer a:hover {
+      text-decoration: underline;
+    }
+
+    /* Noise texture */
+    body::before {
+      content: "";
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="logo-title">
+        <svg viewBox="0 0 120 100" width="48" height="40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <g stroke="#C15F3C" stroke-linecap="round">
+            <path d="M5 70 L108 14" stroke-width="6"/>
+            <path d="M2 58 L117 36" stroke-width="6"/>
+            <path d="M4 50 L111 50" stroke-width="6"/>
+            <path d="M2 42 L117 64" stroke-width="6"/>
+            <path d="M5 30 L108 86" stroke-width="6"/>
+          </g>
+        </svg>
+        <span class="title">cray</span>
+      </div>
+      <h2 class="tagline">See what Claude Code is doing</h2>
+      <p class="subtitle">
+        A local profiler and debugger for Claude Code sessions.
+        Visualize token usage and tool calls.
+      </p>
+    </section>
+
+    <!-- Install -->
+    <section class="install">
+      <h2>Install</h2>
+      <div class="code-block">curl -fsSL https://cray.my/install | sh</div>
+    </section>
+
+    <!-- Features -->
+    <section class="features">
+      <div class="feature">
+        <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 3v18h18"/>
+          <path d="M18 9l-5 5-4-4-3 3"/>
+        </svg>
+        <div>
+          <h3>Token usage over time</h3>
+          <p>See input, output, and cache tokens across your session timeline.</p>
+        </div>
+      </div>
+
+      <div class="feature">
+        <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <path d="M9 9h6M9 13h6M9 17h4"/>
+        </svg>
+        <div>
+          <h3>Tool breakdown</h3>
+          <p>Understand which tools take time. See call counts, latencies, and errors.</p>
+        </div>
+      </div>
+
+      <div class="feature">
+        <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="10" rx="2"/>
+          <path d="M7 11V7a5 5 0 0110 0v4"/>
+        </svg>
+        <div>
+          <h3>Local only</h3>
+          <p>Runs entirely on your machine. No data leaves your computer.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Usage -->
+    <section class="usage">
+      <h2>Usage</h2>
+
+      <div class="usage-item">
+        <div class="code-block">cray</div>
+        <p>Auto-discover all sessions, launch the explorer UI</p>
+      </div>
+
+      <div class="usage-item">
+        <div class="code-block">cray ~/.claude/projects/myproject</div>
+        <p>Analyze sessions for a specific project</p>
+      </div>
+
+      <div class="usage-item">
+        <div class="code-block">cray --time-breakdown</div>
+        <p>Print a terminal summary without opening the UI</p>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>
+        <a href="https://github.com/accnops/cray">GitHub</a>
+      </p>
+    </footer>
+  </div>
+</body>
+</html>

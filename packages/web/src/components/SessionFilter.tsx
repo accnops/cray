@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import type { Session } from "@ccray/shared";
+import type { Session } from "@cray/shared";
 
 interface Props {
   sessions: Session[];
@@ -54,9 +54,11 @@ export function SessionFilter({ sessions, selectedIds, onChange }: Props) {
                   onChange={() => toggle(s.sessionId)}
                 />
                 <span className="filter-label">
-                  <span className="project">{getProjectName(s.projectPath)}</span>
-                  <span className="time">{formatRelativeTime(s.startTs)}</span>
-                  <span className="message">{truncate(s.firstMessage, 30)}</span>
+                  <span className="filter-label-top">
+                    <span className="project">{getProjectName(s.projectPath)}</span>
+                    <span className="time">{formatRelativeTime(s.startTs)}</span>
+                  </span>
+                  <span className="message">{cleanMessage(s.firstMessage)}</span>
                 </span>
               </label>
             ))}
@@ -68,10 +70,15 @@ export function SessionFilter({ sessions, selectedIds, onChange }: Props) {
 }
 
 function getProjectName(path: string): string {
-  const parts = path.split("/");
+  if (!path) return "";
+  // Remove trailing slashes and get last path component
+  const trimmed = path.replace(/\/+$/, "");
+  const parts = trimmed.split("/");
   const last = parts[parts.length - 1];
-  // Remove leading dash prefix from encoded paths
-  return last.replace(/^-+/, "").split("-").pop() ?? last;
+  if (!last) return "";
+  // Claude encodes paths like -Users-arthurcnops-Personal-projectname
+  const cleaned = last.replace(/^-+/, "");
+  return cleaned.split("-").pop() || cleaned || "";
 }
 
 function formatRelativeTime(ts: number): string {
@@ -86,8 +93,8 @@ function formatRelativeTime(ts: number): string {
   return "just now";
 }
 
-function truncate(s: string | null, len: number): string {
+function cleanMessage(s: string | null): string {
   if (!s) return "";
-  if (s.length <= len) return s;
-  return s.slice(0, len) + "...";
+  // Strip XML-like tags (system reminders, skill invocations, etc.)
+  return s.replace(/<[^>]+>/g, "").trim();
 }

@@ -1,5 +1,5 @@
 {
-  "name": "@ccray/server",
+  "name": "@cray/server",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -10,8 +10,9 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@ccray/shared": "workspace:*",
-    "@ccray/db": "workspace:*",
+    "@cray/shared": "workspace:*",
+    "@cray/db": "workspace:*",
+    "@cray/parser": "workspace:*",
     "hono": "^4.6.0"
   },
   "devDependencies": {

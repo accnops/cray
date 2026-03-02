@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
-import type { Session, Agent, Span, ToolCall } from "@ccray/shared";
-import { estimateCost } from "@ccray/shared";
-import { Repository, createSchema } from "@ccray/db";
+import type { Session, Agent, Span, ToolCall } from "@cray/shared";
+import { estimateCost } from "@cray/shared";
+import { Repository, createSchema } from "@cray/db";
 import { discoverSessions, type DiscoveredSession } from "./discovery.js";
 import { readJsonlLines } from "./reader.js";
 import { normalizeEvent, type NormalizedEvent } from "./normalizer.js";
@@ -57,23 +57,21 @@ export async function ingestSession(
     totalCacheWrite
   );
 
-  // Find first user message
+  // Find first real user message (skip system content, commands, tool results)
   let firstMessage: string | null = null;
   for (const event of events) {
     if (event.normType === "user_message") {
       try {
         const raw = JSON.parse(event.rawJson);
+        // Skip meta messages (skill invocations, system injections)
+        if (raw.isMeta) continue;
         if (raw.message?.content) {
           const content = raw.message.content;
-          if (typeof content === "string") {
-            firstMessage = content.slice(0, 100);
-          } else if (Array.isArray(content)) {
-            const textPart = content.find((p: any) => p.type === "text");
-            if (textPart?.text) {
-              firstMessage = textPart.text.slice(0, 100);
-            }
+          const text = extractUserText(content);
+          if (text) {
+            firstMessage = text.slice(0, 500);
+            break;
           }
-          break;
         }
       } catch {
         // Skip malformed JSON
@@ -190,19 +188,75 @@ function inferSpanType(event: NormalizedEvent): Span["spanType"] {
   return "unknown_gap";
 }
 
+// Extract real user text, skipping system content (commands, tool results, caveats)
+function extractUserText(content: unknown): string | null {
+  if (typeof content === "string") {
+    // Check for command-args in skill invocations
+    const argsMatch = content.match(/<command-args>([\s\S]*?)<\/command-args>/);
+    if (argsMatch) {
+      const args = argsMatch[1].trim();
+      if (args) return args;
+    }
+    return isRealUserText(content) ? content : null;
+  }
+  if (Array.isArray(content)) {
+    for (const part of content) {
+      if (typeof part === "string") {
+        const argsMatch = part.match(/<command-args>([\s\S]*?)<\/command-args>/);
+        if (argsMatch) {
+          const args = argsMatch[1].trim();
+          if (args) return args;
+        }
+        if (isRealUserText(part)) return part;
+      }
+      if (part?.type === "text" && typeof part.text === "string") {
+        const argsMatch = part.text.match(/<command-args>([\s\S]*?)<\/command-args>/);
+        if (argsMatch) {
+          const args = argsMatch[1].trim();
+          if (args) return args;
+        }
+        if (isRealUserText(part.text)) return part.text;
+      }
+    }
+  }
+  return null;
+}
+
+function isRealUserText(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  // Skip XML-like system content
+  if (trimmed.startsWith("<")) return false;
+  // Skip JSON arrays (tool results)
+  if (trimmed.startsWith("[")) return false;
+  // Skip JSON objects
+  if (trimmed.startsWith("{")) return false;
+  // Skip skill invocation instructions
+  if (trimmed.startsWith("Invoke the ")) return false;
+  return true;
+}
+
 export async function ingestAll(
   db: Database,
   path: string,
   options: IngestOptions = {}
 ): Promise<Session[]> {
   createSchema(db);
+
+  // Clear existing data - each run starts fresh to avoid mixing projects
+  db.run("DELETE FROM events");
+  db.run("DELETE FROM tool_calls");
+  db.run("DELETE FROM spans");
+  db.run("DELETE FROM agents");
+  db.run("DELETE FROM sessions");
+
   const discovered = await discoverSessions(path);
   const sessions: Session[] = [];
 
   for (const disc of discovered) {
     const session = await ingestSession(db, disc);
     sessions.push(session);
-    console.log(`Ingested session ${session.sessionId} (${session.durationMs}ms, $${session.estimatedCostUsd.toFixed(4)})`);
+    console.log(`Ingested session ${session.sessionId}`);
   }
 
   return sessions;

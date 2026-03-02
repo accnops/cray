@@ -1,6 +1,6 @@
 import { describe, it, test, expect, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
-import { createSchema, Repository } from "@ccray/db";
+import { createSchema, Repository } from "@cray/db";
 import { createApp } from "./routes.js";
 
 describe("API routes", () => {
@@ -12,7 +12,7 @@ describe("API routes", () => {
     db = new Database(":memory:");
     createSchema(db);
     repo = new Repository(db);
-    app = createApp(repo);
+    app = createApp(db, repo, { mode: "explicit" });
 
     // Seed test data
     repo.insertSession({

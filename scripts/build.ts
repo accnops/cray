@@ -12,7 +12,7 @@ async function build() {
 
   // Compile CLI to standalone binary
   console.log("\nCompiling standalone binary...");
-  await $`bun build packages/cli/src/index.ts --compile --outfile dist/ccray`;
+  await $`bun build packages/cli/src/index.ts --compile --outfile dist/cray`;
 
   // Copy web assets alongside binary
   console.log("\nCopying web assets...");
@@ -20,7 +20,7 @@ async function build() {
   await $`cp -r packages/web/dist dist/web`;
 
   console.log("\nBuild complete!");
-  console.log("  Binary: dist/ccray");
+  console.log("  Binary: dist/cray");
   console.log("  Web UI: dist/web/");
 }
 
