@@ -12,6 +12,8 @@ jobs:
         include:
           - os: macos-latest
             target: darwin-arm64
+          - os: macos-13
+            target: darwin-x64
           - os: ubuntu-latest
             target: linux-x64
 
@@ -67,6 +69,7 @@ jobs:
         run: |
           mkdir -p release
           cp artifacts/cray-darwin-arm64/cray-darwin-arm64 release/
+          cp artifacts/cray-darwin-x64/cray-darwin-x64 release/
           cp artifacts/cray-linux-x64/cray-linux-x64 release/
           chmod +x release/*
 
