@@ -7,6 +7,7 @@ interface ChatSidebarProps {
   sessionIds: string[];
   timeRange: { start: number; end: number } | null;
   onIndicatorChange?: (ts: number | null) => void;
+  scrollToTs?: number | null;
 }
 
 const DEFAULT_WIDTH = 400;
@@ -14,7 +15,7 @@ const MIN_WIDTH = 300;
 const MAX_WIDTH = 600;
 const STORAGE_KEY = "cray-sidebar-width";
 
-export function ChatSidebar({ sessionIds, timeRange, onIndicatorChange }: ChatSidebarProps) {
+export function ChatSidebar({ sessionIds, timeRange, onIndicatorChange, scrollToTs }: ChatSidebarProps) {
   const [width, setWidth] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
@@ -79,6 +80,30 @@ export function ChatSidebar({ sessionIds, timeRange, onIndicatorChange }: ChatSi
       return () => clearTimeout(timeoutId);
     }
   }, [data, handleScroll]);
+
+  // Scroll to target timestamp when scrollToTs changes
+  useEffect(() => {
+    if (scrollToTs == null || !listRef.current || !data || data.messages.length === 0) return;
+
+    // Find the message with the closest timestamp
+    let closestEl: HTMLElement | null = null;
+    let closestDist = Infinity;
+
+    const messageEls = listRef.current.querySelectorAll<HTMLElement>('.chat-message[data-ts]');
+    for (const el of messageEls) {
+      const ts = parseInt(el.getAttribute('data-ts') || '0', 10);
+      const dist = Math.abs(ts - scrollToTs);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestEl = el;
+      }
+    }
+
+    if (closestEl) {
+      // Use instant scroll to avoid choppy indicator updates during smooth scroll
+      closestEl.scrollIntoView({ behavior: 'instant', block: 'center' });
+    }
+  }, [scrollToTs, data]);
 
   // Resize handling
   const handleMouseDown = useCallback((e: React.MouseEvent) => {

@@ -140,10 +140,6 @@ export function TimeBreakdown({ data }: Props) {
   const chartContent = useMemo(() => {
     if (data.length === 0 || !containerWidth) return null;
 
-    // Take top 8 for chart
-    const chartData = data.slice(0, 8);
-    const maxWallClock = Math.max(...chartData.map((d) => d.wallClockMs), 1);
-
     const width = containerWidth;
     const barHeight = 22;
     const barGap = 8;
@@ -152,6 +148,12 @@ export function TimeBreakdown({ data }: Props) {
     const pctWidth = 50;
     const margin = { top: 4, right: 10, bottom: 10, left: 10 };
     const chartWidth = Math.max(50, width - margin.left - margin.right - labelWidth - pctWidth);
+
+    // Take top entries for chart, filtering out items that would have bar width < 2px
+    const maxWallClock = Math.max(...data.map((d) => d.wallClockMs), 1);
+    // barWidth = (wallClockMs / maxWallClock) * chartWidth, so threshold = 2 * maxWallClock / chartWidth
+    const minThreshold = (2 * maxWallClock) / chartWidth;
+    const chartData = data.filter((d) => d.wallClockMs >= minThreshold).slice(0, 8);
     const height = margin.top + margin.bottom + chartData.length * (barHeight + barGap) - barGap;
 
     const rand = createRandom(123);

@@ -57,6 +57,7 @@ export function Dashboard({ projectName: propProjectName, showBackButton, onBack
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [timeRange, setTimeRange] = useState<{ start: number; end: number } | null>(null);
   const [indicatorTs, setIndicatorTs] = useState<number | null>(null);
+  const [scrollToTs, setScrollToTs] = useState<number | null>(null);
 
   // Select all sessions by default
   useEffect(() => {
@@ -152,6 +153,7 @@ export function Dashboard({ projectName: propProjectName, showBackButton, onBack
                 <HandDrawnChart
                   data={aggregate.tokensOverTime}
                   onZoomChange={setTimeRange}
+                  onTimeClick={setScrollToTs}
                   isZoomed={timeRange !== null}
                   indicatorTs={indicatorTs}
                 />
@@ -166,7 +168,7 @@ export function Dashboard({ projectName: propProjectName, showBackButton, onBack
         </main>
       </div>
 
-      <ChatSidebar sessionIds={selectedIds} timeRange={timeRange} onIndicatorChange={setIndicatorTs} />
+      <ChatSidebar sessionIds={selectedIds} timeRange={timeRange} onIndicatorChange={setIndicatorTs} scrollToTs={scrollToTs} />
     </div>
   );
 }

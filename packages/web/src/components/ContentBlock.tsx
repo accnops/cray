@@ -1,9 +1,39 @@
+import { useState } from "react";
 import type { ChatContentBlock } from "@cray/shared";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ToolInputDisplay } from "./ToolInputDisplay";
 
 interface ContentBlockProps {
   block: ChatContentBlock;
+}
+
+function CollapsibleThinking({ text }: { text: string }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const charCount = text.length;
+  const previewLength = 150;
+  const needsCollapse = charCount > previewLength;
+  const preview = needsCollapse ? text.slice(0, previewLength) + "..." : text;
+
+  if (!needsCollapse) {
+    return <div className="content-block thinking-block">{text}</div>;
+  }
+
+  return (
+    <div className={`content-block thinking-block collapsible ${isExpanded ? "expanded" : ""}`}>
+      <div
+        className="thinking-header"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <span className="thinking-toggle">{isExpanded ? "▼" : "▶"}</span>
+        <span className="thinking-label">Thinking</span>
+        <span className="thinking-badge">{charCount.toLocaleString()} chars</span>
+      </div>
+      <div className="thinking-content">
+        {isExpanded ? text : preview}
+      </div>
+    </div>
+  );
 }
 
 export function ContentBlock({ block }: ContentBlockProps) {
@@ -16,7 +46,7 @@ export function ContentBlock({ block }: ContentBlockProps) {
   }
 
   if (block.type === "thinking") {
-    return <div className="content-block thinking-block">{block.text}</div>;
+    return <CollapsibleThinking text={block.text} />;
   }
 
   if (block.type === "tool_use") {
@@ -26,11 +56,7 @@ export function ContentBlock({ block }: ContentBlockProps) {
         <div className="tool-use-header">
           <span className={`tool-name ${isMcp ? "mcp" : ""}`}>{block.toolName}</span>
         </div>
-        <div className="tool-input">
-          {typeof block.input === "string"
-            ? block.input
-            : JSON.stringify(block.input, null, 2)}
-        </div>
+        <ToolInputDisplay toolName={block.toolName} input={block.input} />
       </div>
     );
   }

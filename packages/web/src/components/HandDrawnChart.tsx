@@ -20,6 +20,7 @@ interface Series {
 interface Props {
   data: DataPoint[];
   onZoomChange?: (range: { start: number; end: number } | null) => void;
+  onTimeClick?: (ts: number) => void;
   isZoomed?: boolean;
   indicatorTs?: number | null;
 }
@@ -275,7 +276,7 @@ function computeTimeTicks(minTs: number, maxTs: number, maxTicks: number): TimeT
   return ticks;
 }
 
-export function HandDrawnChart({ data, onZoomChange, isZoomed, indicatorTs }: Props) {
+export function HandDrawnChart({ data, onZoomChange, onTimeClick, isZoomed, indicatorTs }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragStart, setDragStart] = useState<{ x: number; ts: number } | null>(null);
@@ -442,7 +443,7 @@ export function HandDrawnChart({ data, onZoomChange, isZoomed, indicatorTs }: Pr
 
   const handleMouseUp = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
-      if (!dragStart || !onZoomChange || !svgRef.current) {
+      if (!dragStart || !svgRef.current) {
         setDragStart(null);
         setDragCurrent(null);
         return;
@@ -450,18 +451,27 @@ export function HandDrawnChart({ data, onZoomChange, isZoomed, indicatorTs }: Pr
 
       const { x } = screenToSvg(e.clientX, e.clientY);
       const endTs = xScaleInverse(x);
+      const dragDistance = Math.abs(x - dragStart.x);
 
-      const start = Math.min(dragStart.ts, endTs);
-      const end = Math.max(dragStart.ts, endTs);
+      // If moved less than 5px, treat as a click
+      if (dragDistance < 5) {
+        if (onTimeClick) {
+          onTimeClick(endTs);
+        }
+      } else {
+        // Drag/zoom behavior
+        const start = Math.min(dragStart.ts, endTs);
+        const end = Math.max(dragStart.ts, endTs);
 
-      if (end - start >= 1000) {
-        onZoomChange({ start, end });
+        if (end - start >= 1000 && onZoomChange) {
+          onZoomChange({ start, end });
+        }
       }
 
       setDragStart(null);
       setDragCurrent(null);
     },
-    [dragStart, onZoomChange, xScaleInverse, screenToSvg]
+    [dragStart, onZoomChange, onTimeClick, xScaleInverse, screenToSvg]
   );
 
   const handleMouseLeave = useCallback(() => {
